@@ -85,7 +85,8 @@ Create a Django superuser account (system-wide admin):
 ```bash
 python manage.py createsuperuser
 ```
-
+mustafapinjari344@gmail.com
+55555
 ---
 
 ### 4. Running the Application
@@ -98,8 +99,10 @@ python manage.py runserver
 ```
 The API will be available at `http://127.0.0.1:8000/`.
 
-#### B. Start Celery Worker
-Start a worker to listen to the default, dataset ingestion, and reporting queues:
+#### B. Start Celery Worker (Optional in Local Dev)
+In the local development settings (`config/settings/local.py`), `CELERY_TASK_ALWAYS_EAGER = True` is enabled by default. This executes all Celery tasks (like email dispatching or report compilation) synchronously in-process. Consequently, **you do not need a running Redis server or a separate Celery worker process to test background tasks locally**—merely starting the Django server is enough.
+
+If you wish to test asynchronous execution with Redis, set `CELERY_TASK_ALWAYS_EAGER = False` in `config/settings/local.py`, ensure your local Redis server is running, and start a worker to listen to the default, dataset ingestion, and reporting queues:
 - **On Windows** (note: `-P threads` or eventlet is recommended for Celery on Windows):
   ```bash
   celery -A config worker --loglevel=info -P threads
@@ -108,6 +111,7 @@ Start a worker to listen to the default, dataset ingestion, and reporting queues
   ```bash
   celery -A config worker --loglevel=info
   ```
+
 
 ---
 

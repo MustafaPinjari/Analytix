@@ -6,6 +6,7 @@ import uuid
 from apps.users.repositories.interface import UserRepositoryInterface
 from apps.organizations.models import Organization
 from apps.users.models import UserOrganizationRole
+from apps.authentication.tasks import send_verification_email_task, send_password_reset_email_task
 from core.exceptions import ValidationException, NotFoundException, AuthenticationException
 
 logger = logging.getLogger(__name__)
@@ -48,8 +49,10 @@ class RegisterUserUseCase:
             # Generate Verification Token
             token = self.signer.sign(str(user.id))
             
-            # Celery task execution placeholder
-            logger.info(f"Verification token generated for user ID {user.id} ({user.email}): {token}")
+            # Trigger Celery verification email task
+            send_verification_email_task.delay(user.email, token)
+            logger.info(f"Verification token generated and task triggered for user ID {user.id} ({user.email}).")
+
 
             return {
                 "user": user,
@@ -102,9 +105,11 @@ class ForgotPasswordUseCase:
 
         # Generate Reset Token
         token = self.signer.sign(str(user.id))
-        logger.info(f"Password reset token generated for user ID {user.id} ({user.email}): {token}")
         
-        # Celery task placeholder for sending reset email
+        # Trigger Celery password reset email task
+        send_password_reset_email_task.delay(user.email, token)
+        logger.info(f"Password reset token generated and task triggered for user ID {user.id} ({user.email}).")
+        
         return {"message": "If the email exists, a password reset link has been sent.", "reset_token": token}
 
 
