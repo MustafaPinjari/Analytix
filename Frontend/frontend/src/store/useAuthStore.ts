@@ -12,6 +12,7 @@ interface AuthState {
   clearAuth: () => void;
   setError: (error: string | null) => void;
   setLoading: (isLoading: boolean) => void;
+  setOrganization: (orgId: string) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -26,6 +27,15 @@ export const useAuthStore = create<AuthState>()(
       clearAuth: () => set({ user: null, accessToken: null, isAuthenticated: false, error: null }),
       setError: (error) => set({ error }),
       setLoading: (isLoading) => set({ isLoading }),
+      setOrganization: (orgId) => set((state) => {
+        if (!state.user) return {};
+        return {
+          user: {
+            ...state.user,
+            organizationId: orgId,
+          }
+        };
+      }),
     }),
     {
       name: 'insightflow-auth-storage',

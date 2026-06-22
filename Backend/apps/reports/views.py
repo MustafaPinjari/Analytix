@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from apps.reports.models import Report, ReportHistory
 from apps.reports.serializers import ReportSerializer, ReportHistorySerializer
+from apps.reports.tasks import compile_report_task
 from core.permissions import HasTenantContext, IsViewer, IsAnalyst
 from core.exceptions import NotFoundException, ValidationException
 
@@ -100,3 +101,24 @@ class ReportHistoryListView(APIView):
         
         serializer = ReportHistorySerializer(histories, many=True)
         return Response({"success": True, "results": serializer.data}, status=status.HTTP_200_OK)
+
+
+class ReportRunView(APIView):
+    permission_classes = [IsAuthenticated, HasTenantContext, IsAnalyst]
+
+    def post(self, request, report_id):
+        try:
+            report = Report.objects.get(id=report_id, organization=request.tenant)
+        except Report.DoesNotExist:
+            raise NotFoundException("Report schedule not found.")
+
+        # Trigger compile report Celery task
+        compile_report_task.delay(str(report.id))
+
+        return Response(
+            {
+                "success": True,
+                "message": "Report generation task triggered successfully."
+            },
+            status=status.HTTP_200_OK
+        )

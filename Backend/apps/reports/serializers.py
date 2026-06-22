@@ -4,22 +4,26 @@ from apps.reports.models import Report, ReportHistory
 
 class ReportSerializer(serializers.ModelSerializer):
     recipients = serializers.JSONField()
+    dashboard_name = serializers.ReadOnlyField(source="dashboard.name")
+    last_run = serializers.SerializerMethodField()
 
     class Meta:
         model = Report
         fields = (
             "id",
             "dashboard",
+            "dashboard_name",
             "name",
             "schedule_cron",
             "format",
             "recipients",
             "is_active",
+            "last_run",
             "created_by",
             "created_at",
             "updated_at",
         )
-        read_only_fields = ("id", "created_by", "created_at", "updated_at")
+        read_only_fields = ("id", "dashboard_name", "last_run", "created_by", "created_at", "updated_at")
 
     def validate_recipients(self, value):
         if not isinstance(value, list) or len(value) == 0:
@@ -28,6 +32,15 @@ class ReportSerializer(serializers.ModelSerializer):
             if not isinstance(email, str) or "@" not in email:
                 raise serializers.ValidationError(f"Invalid email: {email}")
         return value
+
+    def get_last_run(self, obj):
+        last = obj.history.order_by("-run_at").first()
+        if last:
+            return {
+                "status": "success" if last.status == "COMPLETED" else "failed" if last.status == "FAILED" else "pending",
+                "run_at": last.run_at.isoformat()
+            }
+        return None
 
     def to_representation(self, instance):
         ret = super().to_representation(instance)

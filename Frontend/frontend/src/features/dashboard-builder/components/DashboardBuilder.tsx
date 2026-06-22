@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { MOCK_DASHBOARDS, MOCK_DATASETS } from '../../../utils/mockData';
-import { Dashboard, Widget, WidgetType } from '../../../types';
+import { apiClient } from '../../../services/apiClient';
+import { Dashboard, Widget, WidgetType, Dataset } from '../../../types';
 import {
   ArrowLeft,
   Eye,
@@ -44,13 +44,13 @@ function ResponsiveWidthWrapper({ children }: { children: (width: number) => Rea
   );
 }
 
-
 export default function DashboardBuilder() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   
   // Dashboard workspace states
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
+  const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [isEditMode, setIsEditMode] = useState(true);
   const [selectedWidget, setSelectedWidget] = useState<Widget | null>(null);
   const [configDrawerOpen, setConfigDrawerOpen] = useState(false);
@@ -62,27 +62,68 @@ export default function DashboardBuilder() {
   const [shareRole, setShareRole] = useState<'editor' | 'viewer'>('viewer');
   const [copiedLink, setCopiedLink] = useState(false);
 
-  // Load dashboard from list
+  // Load datasets on mount
   useEffect(() => {
-    const found = MOCK_DASHBOARDS.find((d) => d.id === id);
-    if (found) {
-      // Create deep copy to allow modifications
-      setDashboard(JSON.parse(JSON.stringify(found)));
-    } else {
-      // Create a fallback new dashboard
-      setDashboard({
-        id: id || 'dash-new',
-        name: 'Untitled Dashboard',
-        description: 'Configure your datasets and widget layout.',
-        widgets: [],
-        isShared: false,
-        sharedWith: [],
-        ownerId: 'usr-001',
-        ownerName: 'Sarah Connor',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
-    }
+    const fetchDatasets = async () => {
+      try {
+        const response = await apiClient.get('/datasets/');
+        const results = response.data.results || [];
+        const mapped = results.map((ds: any) => ({
+          id: ds.id,
+          name: ds.name,
+          description: ds.description,
+          columns: ds.columns || [],
+          rowCount: ds.row_count || 0,
+          connectionType: ds.connection_type || 'csv',
+          createdAt: ds.created_at,
+          updatedAt: ds.updated_at,
+        }));
+        setDatasets(mapped);
+      } catch (err) {
+        console.error('Error fetching datasets:', err);
+      }
+    };
+    fetchDatasets();
+  }, []);
+
+  // Load dashboard from API
+  useEffect(() => {
+    const fetchDashboardDetail = async () => {
+      if (!id) return;
+      try {
+        const response = await apiClient.get(`/dashboards/${id}/`);
+        const d = response.data.data;
+        const mapped: Dashboard = {
+          id: d.id,
+          name: d.name,
+          description: d.description,
+          widgets: (d.widgets || []).map((w: any) => ({
+            id: w.id,
+            type: w.type,
+            title: w.name,
+            queryConfig: w.query_config,
+            visualizationSettings: {},
+            layout: {
+              i: w.id,
+              x: w.position_x,
+              y: w.position_y,
+              w: w.width,
+              h: w.height,
+            }
+          })),
+          isShared: false,
+          sharedWith: [],
+          ownerId: d.owner_id || '',
+          ownerName: d.owner_name || 'Unknown',
+          createdAt: d.created_at,
+          updatedAt: d.updated_at,
+        };
+        setDashboard(mapped);
+      } catch (err) {
+        console.error('Error loading dashboard:', err);
+      }
+    };
+    fetchDashboardDetail();
   }, [id]);
 
   if (!dashboard) {
@@ -95,10 +136,60 @@ export default function DashboardBuilder() {
 
   // Handle saving configurations
   const handleSave = async () => {
+    if (!dashboard) return;
     setSaveStatus('saving');
-    await new Promise((resolve) => setTimeout(resolve, 800)); // Network simulation
-    setSaveStatus('saved');
-    setTimeout(() => setSaveStatus('idle'), 2000);
+    try {
+      // 1. Save dashboard details
+      await apiClient.put(`/dashboards/${dashboard.id}/`, {
+        name: dashboard.name,
+        description: dashboard.description,
+      });
+
+      // 2. Save/Update each widget
+      const updatedWidgetsPromises = dashboard.widgets.map(async (w) => {
+        const payload = {
+          name: w.title,
+          type: w.type,
+          dataset: w.queryConfig.datasetId,
+          query_config: w.queryConfig,
+          position_x: w.layout.x,
+          position_y: w.layout.y,
+          width: w.layout.w,
+          height: w.layout.h,
+        };
+
+        if (w.id.startsWith('widget-')) {
+          // This is a new widget, POST it
+          const res = await apiClient.post(`/dashboards/${dashboard.id}/widgets/`, payload);
+          const createdWidget = res.data.data;
+          return {
+            ...w,
+            id: createdWidget.id,
+            layout: {
+              ...w.layout,
+              i: createdWidget.id
+            }
+          };
+        } else {
+          // Existing widget, PUT it
+          await apiClient.put(`/dashboards/${dashboard.id}/widgets/${w.id}/`, payload);
+          return w;
+        }
+      });
+
+      const updatedWidgets = await Promise.all(updatedWidgetsPromises);
+      setDashboard({
+        ...dashboard,
+        widgets: updatedWidgets
+      });
+      
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    } catch (err) {
+      console.error('Error saving dashboard configuration:', err);
+      setSaveStatus('idle');
+      alert('Failed to save dashboard. Please ensure you have configured a valid dataset for all widgets.');
+    }
   };
 
   // Handle Grid coordinate update
@@ -129,15 +220,21 @@ export default function DashboardBuilder() {
 
   // Add Widget template onto grid
   const handleAddWidget = (type: WidgetType) => {
+    if (datasets.length === 0) {
+      alert('Please upload a dataset first before adding widgets.');
+      return;
+    }
+
+    const defaultDataset = datasets[0];
     const newId = `widget-${Date.now()}`;
     const defaultQueryConfig = {
-      datasetId: MOCK_DATASETS[0].id,
-      dimensions: [MOCK_DATASETS[0].columns[0].name],
+      datasetId: defaultDataset.id,
+      dimensions: [defaultDataset.columns[0]?.name || ''],
       metrics: [
         {
-          column: MOCK_DATASETS[0].columns.find((c) => c.type === 'number')?.name || 'value',
+          column: defaultDataset.columns.find((c) => c.type === 'number')?.name || defaultDataset.columns[0]?.name || '',
           aggregation: 'sum' as const,
-          alias: 'Metric Value',
+          alias: 'Value',
         },
       ],
       filters: [],
@@ -173,15 +270,26 @@ export default function DashboardBuilder() {
   };
 
   // Delete widget from board
-  const handleDeleteWidget = (widgetId: string, e: React.MouseEvent) => {
+  const handleDeleteWidget = async (widgetId: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    
     setDashboard((prev) => {
       if (!prev) return null;
       return { ...prev, widgets: prev.widgets.filter((w) => w.id !== widgetId) };
     });
+    
     if (selectedWidget?.id === widgetId) {
       setSelectedWidget(null);
       setConfigDrawerOpen(false);
+    }
+
+    // Delete from backend if it is an existing persisted widget
+    if (!widgetId.startsWith('widget-')) {
+      try {
+        await apiClient.delete(`/dashboards/${dashboard.id}/widgets/${widgetId}/`);
+      } catch (err) {
+        console.error('Error deleting widget from backend:', err);
+      }
     }
   };
 
@@ -420,7 +528,6 @@ export default function DashboardBuilder() {
       {/* 3. RIGHT SIDE: WIDGET EDITOR CONFIGURATOR DRAWER */}
       {configDrawerOpen && selectedWidget && (
         <>
-          {/* Backdrop (blocks interactions in background on desktop edit mode if preferred, or leaves visible) */}
           <div
             className="fixed inset-0 z-30 bg-zinc-950/20 backdrop-blur-xs lg:hidden"
             onClick={() => setConfigDrawerOpen(false)}
@@ -456,14 +563,14 @@ export default function DashboardBuilder() {
                   value={selectedWidget.queryConfig.datasetId}
                   onChange={(e) => {
                     const nextDsId = e.target.value;
-                    const nextDs = MOCK_DATASETS.find(d => d.id === nextDsId) || MOCK_DATASETS[0];
+                    const nextDs = datasets.find(d => d.id === nextDsId) || datasets[0];
                     handleUpdateWidget({
                       ...selectedWidget,
                       queryConfig: {
                         datasetId: nextDsId,
-                        dimensions: [nextDs.columns[0].name],
+                        dimensions: [nextDs?.columns[0]?.name || ''],
                         metrics: [{
-                          column: nextDs.columns.find(c => c.type === 'number')?.name || 'value',
+                          column: nextDs?.columns.find(c => c.type === 'number')?.name || nextDs?.columns[0]?.name || '',
                           aggregation: 'sum',
                           alias: 'Value',
                         }],
@@ -473,7 +580,7 @@ export default function DashboardBuilder() {
                   }}
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
                 >
-                  {MOCK_DATASETS.map((ds) => (
+                  {datasets.map((ds) => (
                     <option key={ds.id} value={ds.id}>{ds.name}</option>
                   ))}
                 </select>
@@ -496,7 +603,7 @@ export default function DashboardBuilder() {
                     }}
                     className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
                   >
-                    {MOCK_DATASETS.find(d => d.id === selectedWidget.queryConfig.datasetId)
+                    {datasets.find(d => d.id === selectedWidget.queryConfig.datasetId)
                       ?.columns.filter(c => c.type === 'string' || c.type === 'date')
                       .map((c) => (
                         <option key={c.name} value={c.name}>{c.name}</option>
@@ -522,7 +629,7 @@ export default function DashboardBuilder() {
                       }}
                       className="rounded border border-border bg-background px-2 py-1 text-xs outline-none focus:border-primary flex-1"
                     >
-                      {MOCK_DATASETS.find(d => d.id === selectedWidget.queryConfig.datasetId)
+                      {datasets.find(d => d.id === selectedWidget.queryConfig.datasetId)
                         ?.columns.map((c) => (
                           <option key={c.name} value={c.name}>{c.name} ({c.type})</option>
                         ))}
@@ -644,11 +751,8 @@ export default function DashboardBuilder() {
       {/* 4. SHARING PERMISSIONS OVERLAY MODAL */}
       {sharingModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          {/* Backdrop */}
           <div className="absolute inset-0 bg-zinc-950/50 backdrop-blur-xs" onClick={() => setSharingModalOpen(false)} />
-          
-          {/* Modal Container */}
-          <div className="relative w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-2xl animate-fade-in-up text-left text-xs">
+          <div className="relative w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-2xl animate-fade-in-up text-left text-xs text-foreground">
             <div className="flex items-center justify-between pb-4 border-b border-border">
               <div className="flex items-center gap-2">
                 <Share2 className="h-4.5 w-4.5 text-primary" />
@@ -662,7 +766,6 @@ export default function DashboardBuilder() {
               </button>
             </div>
 
-            {/* Quick Share Link */}
             <div className="mt-4 flex flex-col gap-1.5">
               <label className="font-semibold text-muted-foreground">Copy Workspace Link</label>
               <div className="flex gap-2">
@@ -682,7 +785,6 @@ export default function DashboardBuilder() {
               </div>
             </div>
 
-            {/* Invite Collaborator Form */}
             <div className="mt-6 flex flex-col gap-2">
               <label className="font-semibold text-muted-foreground">Invite Collaborator</label>
               <div className="flex gap-2">
@@ -711,14 +813,13 @@ export default function DashboardBuilder() {
               </div>
             </div>
 
-            {/* Active Collaborators list */}
             <div className="mt-6">
               <p className="font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">Access Ledger</p>
               <div className="border border-border rounded-xl mt-2 overflow-hidden max-h-48 overflow-y-auto">
                 <div className="flex items-center justify-between p-3 bg-muted/10 border-b border-border">
                   <div className="flex items-center gap-2">
-                    <div className="h-6 w-6 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold">SC</div>
-                    <span className="font-semibold">Sarah Connor (You)</span>
+                    <div className="h-6 w-6 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold">U</div>
+                    <span className="font-semibold">Active Member</span>
                   </div>
                   <span className="text-[10px] font-bold text-muted-foreground uppercase">Owner</span>
                 </div>

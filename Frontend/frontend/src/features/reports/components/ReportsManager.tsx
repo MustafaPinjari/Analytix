@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { MOCK_REPORTS, MOCK_DASHBOARDS } from '../../../utils/mockData';
-import { Report } from '../../../types';
+import { useState, useEffect } from 'react';
+import { apiClient } from '../../../services/apiClient';
+import { Report, Dashboard } from '../../../types';
 import {
   FileText,
   Search,
@@ -18,13 +18,15 @@ import {
 import { formatDate } from '../../../utils';
 
 export default function ReportsManager() {
-  const [reports, setReports] = useState<Report[]>(MOCK_REPORTS);
+  const [reports, setReports] = useState<Report[]>([]);
+  const [dashboards, setDashboards] = useState<Dashboard[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [loading, setLoading] = useState(false);
   
   // New Report Modal states
   const [newReportOpen, setNewReportOpen] = useState(false);
   const [reportName, setReportName] = useState('');
-  const [selectedDashId, setSelectedDashId] = useState(MOCK_DASHBOARDS[0].id);
+  const [selectedDashId, setSelectedDashId] = useState('');
   const [reportFormat, setReportFormat] = useState<'pdf' | 'csv'>('pdf');
   const [reportFreq, setReportFreq] = useState<'daily' | 'weekly' | 'monthly'>('weekly');
   const [recipientEmails, setRecipientEmails] = useState('');
@@ -33,64 +35,115 @@ export default function ReportsManager() {
   const [triggeringId, setTriggeringId] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+  const cronToFreq = (cron: string): 'daily' | 'weekly' | 'monthly' => {
+    if (cron === '0 6 * * *') return 'daily';
+    if (cron === '0 8 * * 1') return 'weekly';
+    if (cron === '0 8 1 * *') return 'monthly';
+    return 'weekly';
+  };
+
+  const freqToCron = (freq: 'daily' | 'weekly' | 'monthly'): string => {
+    if (freq === 'daily') return '0 6 * * *';
+    if (freq === 'weekly') return '0 8 * * 1';
+    return '0 8 1 * *';
+  };
+
+  const fetchReportsAndDashboards = async () => {
+    setLoading(true);
+    try {
+      // 1. Fetch dashboards
+      const dashRes = await apiClient.get('/dashboards/');
+      const rawDashes = dashRes.data.results || [];
+      setDashboards(rawDashes);
+      if (rawDashes.length > 0) {
+        setSelectedDashId(rawDashes[0].id);
+      }
+
+      // 2. Fetch reports
+      const reportsRes = await apiClient.get('/reports/');
+      const rawReports = reportsRes.data.results || [];
+      const mapped = rawReports.map((r: any) => ({
+        id: r.id,
+        name: r.name,
+        dashboardId: r.dashboard,
+        dashboardName: r.dashboard_name || 'Generic Board',
+        format: r.format === 'PDF' ? 'pdf' : 'csv',
+        frequency: cronToFreq(r.schedule_cron),
+        recipientEmails: r.recipients || [],
+        lastRunAt: r.last_run?.run_at || undefined,
+        lastRunStatus: r.last_run?.status || undefined,
+        nextRunAt: new Date(Date.now() + 86400000 * 3).toISOString(), // Simulated next schedule
+        createdAt: r.created_at,
+      }));
+      setReports(mapped);
+    } catch (err) {
+      console.error('Error loading reports details:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchReportsAndDashboards();
+  }, []);
+
   const handleRunNow = async (reportId: string, name: string) => {
     setTriggeringId(reportId);
     setSuccessMessage(null);
     
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1200)); // Sim compile time
+      await apiClient.post(`/reports/${reportId}/run/`, {});
       
-      // Update reports last run time
-      setReports((prev) =>
-        prev.map((r) =>
-          r.id === reportId
-            ? {
-                ...r,
-                lastRunAt: new Date().toISOString(),
-                lastRunStatus: 'success',
-              }
-            : r
-        )
-      );
-      setSuccessMessage(`Report "${name}" generated and dispatched to recipients successfully!`);
-      setTimeout(() => setSuccessMessage(null), 3500);
-    } catch (err) {
+      setSuccessMessage(`Compilation task triggered for scheduled briefing "${name}"! Check task execution logs.`);
+      setTimeout(() => setSuccessMessage(null), 4500);
+      
+      // Refresh list to update history status
+      await fetchReportsAndDashboards();
+    } catch (err: any) {
       console.error(err);
+      alert(err.response?.data?.error?.message || 'Failed to trigger report compilation.');
     } finally {
       setTriggeringId(null);
     }
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Are you sure you want to cancel this scheduled report?')) {
-      setReports((prev) => prev.filter((r) => r.id !== id));
+      try {
+        await apiClient.delete(`/reports/${id}/`);
+        setReports((prev) => prev.filter((r) => r.id !== id));
+      } catch (err) {
+        console.error('Error deleting report schedule:', err);
+      }
     }
   };
 
-  const handleCreateReport = () => {
-    if (!reportName || !recipientEmails) return;
+  const handleCreateReport = async () => {
+    if (!reportName || !recipientEmails || !selectedDashId) return;
     
-    const matchedDashName = MOCK_DASHBOARDS.find(d => d.id === selectedDashId)?.name || 'Generic Board';
     const emailList = recipientEmails.split(',').map((e) => e.trim()).filter(Boolean);
 
-    const newReport: Report = {
-      id: `rep-${Date.now()}`,
-      name: reportName,
-      dashboardId: selectedDashId,
-      dashboardName: matchedDashName,
-      format: reportFormat,
-      frequency: reportFreq,
-      recipientEmails: emailList,
-      nextRunAt: new Date(Date.now() + 86400000 * 7).toISOString(), // 7 days from now
-      createdAt: new Date().toISOString(),
-    };
+    try {
+      await apiClient.post('/reports/', {
+        name: reportName,
+        dashboard: selectedDashId,
+        format: reportFormat === 'pdf' ? 'PDF' : 'EXCEL',
+        schedule_cron: freqToCron(reportFreq),
+        recipients: emailList,
+        is_active: true
+      });
 
-    setReports((prev) => [newReport, ...prev]);
-    
-    // Reset Form
-    setReportName('');
-    setRecipientEmails('');
-    setNewReportOpen(false);
+      // Reset Form
+      setReportName('');
+      setRecipientEmails('');
+      setNewReportOpen(false);
+      
+      // Refresh list
+      await fetchReportsAndDashboards();
+    } catch (err: any) {
+      console.error(err);
+      alert(err.response?.data?.error?.message || 'Failed to schedule report.');
+    }
   };
 
   const filteredReports = reports.filter(
@@ -106,11 +159,17 @@ export default function ReportsManager() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">Scheduled Reports</h1>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Automate data exports and deliver PDF briefings or raw CSV streams directly to team emails.
+            Automate data exports and deliver PDF briefings or Excel spreadsheets directly to team emails.
           </p>
         </div>
         <button
-          onClick={() => setNewReportOpen(true)}
+          onClick={() => {
+            if (dashboards.length === 0) {
+              alert('Please create a dashboard first before scheduling reports.');
+              return;
+            }
+            setNewReportOpen(true);
+          }}
           className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 hover:brightness-110 active:scale-[0.98] transition-all"
         >
           <Plus className="h-4 w-4" />
@@ -122,7 +181,7 @@ export default function ReportsManager() {
         <div className="rounded-lg border border-emerald-900/50 bg-emerald-950/20 p-4 flex gap-3 text-emerald-400 text-xs">
           <CheckCircle2 className="h-5 w-5 shrink-0" />
           <div>
-            <p className="font-bold">Dispatch Successful</p>
+            <p className="font-bold">Task Triggered</p>
             <p className="mt-0.5">{successMessage}</p>
           </div>
         </div>
@@ -141,18 +200,22 @@ export default function ReportsManager() {
       </div>
 
       {/* Reports Table/Grid */}
-      {filteredReports.length === 0 ? (
+      {loading && reports.length === 0 ? (
+        <div className="flex h-32 items-center justify-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+        </div>
+      ) : filteredReports.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card">
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground mb-4">
             <FileText className="h-6 w-6" />
           </div>
           <h3 className="text-sm font-semibold">No report schedules</h3>
           <p className="text-xs text-muted-foreground mt-1 max-w-sm">
-            Configure periodic PDF brief summaries of your KPI metrics or export database matrices on a recurring timeline.
+            Configure periodic PDF briefings of your dashboard or export Excel matrices on a recurring timeline.
           </p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+        <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm animate-fade-in-up">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
@@ -246,7 +309,7 @@ export default function ReportsManager() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-zinc-950/50 backdrop-blur-xs" onClick={() => setNewReportOpen(false)} />
           
-          <div className="relative w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl animate-fade-in-up text-left text-xs space-y-4">
+          <div className="relative w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl animate-fade-in-up text-left text-xs space-y-4 text-foreground">
             <div className="flex items-center justify-between pb-3 border-b border-border">
               <div className="flex items-center gap-2">
                 <Calendar className="h-4.5 w-4.5 text-primary" />
@@ -280,7 +343,7 @@ export default function ReportsManager() {
                   onChange={(e) => setSelectedDashId(e.target.value)}
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
                 >
-                  {MOCK_DASHBOARDS.map((d) => (
+                  {dashboards.map((d) => (
                     <option key={d.id} value={d.id}>{d.name}</option>
                   ))}
                 </select>
@@ -294,7 +357,7 @@ export default function ReportsManager() {
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
                 >
                   <option value="pdf">PDF Briefing</option>
-                  <option value="csv">Raw CSV Spreadsheet</option>
+                  <option value="csv">Excel Spreadsheet</option>
                 </select>
               </div>
             </div>

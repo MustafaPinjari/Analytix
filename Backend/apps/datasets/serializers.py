@@ -3,10 +3,59 @@ from rest_framework import serializers
 from apps.datasets.models import Dataset, DatasetVersion
 
 class DatasetSerializer(serializers.ModelSerializer):
+    columns = serializers.SerializerMethodField()
+    row_count = serializers.SerializerMethodField()
+    connection_type = serializers.SerializerMethodField()
+
     class Meta:
         model = Dataset
-        fields = ("id", "name", "description", "created_at", "updated_at")
+        fields = ("id", "name", "description", "columns", "row_count", "connection_type", "created_at", "updated_at")
         read_only_fields = ("id", "created_at", "updated_at")
+
+    def get_latest_version(self, obj):
+        if not hasattr(obj, "_latest_version"):
+            obj._latest_version = obj.versions.order_by("-version_number").first()
+        return obj._latest_version
+
+    def get_columns(self, obj):
+        version = self.get_latest_version(obj)
+        if not version:
+            return []
+        try:
+            meta = json.loads(version.metadata_json)
+            cols = []
+            for col in meta.get("columns", []):
+                t = col.get("type", "string")
+                mapped_type = "string"
+                if t in ["int", "float"]:
+                    mapped_type = "number"
+                elif t == "datetime":
+                    mapped_type = "date"
+                elif t == "boolean":
+                    mapped_type = "boolean"
+                cols.append({
+                    "name": col.get("name"),
+                    "type": mapped_type
+                })
+            return cols
+        except Exception:
+            return []
+
+    def get_row_count(self, obj):
+        version = self.get_latest_version(obj)
+        if not version:
+            return 0
+        try:
+            meta = json.loads(version.metadata_json)
+            return meta.get("row_count", 0)
+        except Exception:
+            return 0
+
+    def get_connection_type(self, obj):
+        version = self.get_latest_version(obj)
+        if not version:
+            return "csv"
+        return version.file_type.lower()
 
 
 class DatasetVersionSerializer(serializers.ModelSerializer):

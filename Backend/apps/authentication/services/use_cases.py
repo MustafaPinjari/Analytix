@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.core.signing import TimestampSigner, SignatureExpired, BadSignature
 from django.utils.text import slugify
 from django.db import transaction
@@ -26,8 +27,8 @@ class RegisterUserUseCase:
                 password=password,
                 first_name=first_name,
                 last_name=last_name,
-                is_active=False,
-                is_verified=False
+                is_active=settings.DEBUG,
+                is_verified=settings.DEBUG
             )
 
             organization = None

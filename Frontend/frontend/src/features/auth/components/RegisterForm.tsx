@@ -3,6 +3,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../../store/useAuthStore';
+import { apiClient } from '../../../services/apiClient';
 import { MOCK_USER } from '../../../utils/mockData';
 import { useState } from 'react';
 
@@ -40,20 +41,23 @@ export default function RegisterForm() {
     setApiError(null);
 
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const parts = data.name.trim().split(/\s+/);
+      const first_name = parts[0] || "";
+      const last_name = parts.slice(1).join(" ") || "";
 
-      const mockNewUser = {
-        ...MOCK_USER,
+      await apiClient.post('/auth/register/', {
         email: data.email,
-        name: data.name,
-        organizationId: 'org-new-generated',
-      };
+        password: data.password,
+        first_name,
+        last_name,
+        org_name: data.orgName,
+      });
 
-      setAuth(mockNewUser, 'mock-jwt-token-new-user');
-      navigate('/dashboards');
-    } catch (err) {
-      setApiError('Registration failed. Please check your data.');
+      alert("Registration successful! A verification link has been sent to your email. (Check Celery task logs for the token)");
+      navigate('/login');
+    } catch (err: any) {
+      const errMsg = err.response?.data?.error?.message || err.response?.data?.detail || 'Registration failed. Please check your data.';
+      setApiError(errMsg);
     } finally {
       setLoading(false);
     }

@@ -3,6 +3,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../../store/useAuthStore';
+import { apiClient } from '../../../services/apiClient';
 import { MOCK_USER } from '../../../utils/mockData';
 import { useState } from 'react';
 
@@ -36,20 +37,34 @@ export default function LoginForm() {
     setApiError(null);
     
     try {
-      // Simulate API network latency
-      await new Promise((resolve) => setTimeout(resolve, 800));
-      
-      // Standalone simulation login (allows any demo account)
-      const mockUser = {
-        ...MOCK_USER,
+      const response = await apiClient.post('/auth/login/', {
         email: data.email,
-        name: data.email.split('@')[0].replace('.', ' ').replace(/\b\w/g, c => c.toUpperCase()),
+        password: data.password,
+      });
+
+      const responseData = response.data;
+      const accessToken = responseData.access;
+      const userPayload = responseData.user;
+      const orgs = responseData.organizations || [];
+
+      const backendRole = orgs[0]?.role || "VIEWER";
+      const frontendRole: 'owner' | 'admin' | 'editor' | 'viewer' = 
+        backendRole === "SUPER_ADMIN" || backendRole === "ORG_ADMIN" ? "admin" : 
+        backendRole === "ANALYST" ? "editor" : "viewer";
+
+      const mappedUser = {
+        id: userPayload.id,
+        name: `${userPayload.first_name || ""} ${userPayload.last_name || ""}`.trim() || userPayload.email,
+        email: userPayload.email,
+        role: frontendRole,
+        organizationId: orgs[0]?.id || "",
       };
-      
-      setAuth(mockUser, 'mock-jwt-token-xyz-123');
+
+      setAuth(mappedUser, accessToken);
       navigate('/dashboards');
-    } catch (err) {
-      setApiError('Invalid credentials. Please try again.');
+    } catch (err: any) {
+      const errMsg = err.response?.data?.error?.message || err.response?.data?.detail || 'Invalid credentials. Please try again.';
+      setApiError(errMsg);
     } finally {
       setLoading(false);
     }

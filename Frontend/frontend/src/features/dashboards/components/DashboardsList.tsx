@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MOCK_DASHBOARDS } from '../../../utils/mockData';
+import { apiClient } from '../../../services/apiClient';
 import { Dashboard } from '../../../types';
 import {
   LayoutDashboard,
@@ -18,36 +18,75 @@ import { formatDate } from '../../../utils';
 
 export default function DashboardsList() {
   const navigate = useNavigate();
-  const [dashboards, setDashboards] = useState<Dashboard[]>(MOCK_DASHBOARDS);
+  const [dashboards, setDashboards] = useState<Dashboard[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleDelete = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation(); // prevent card click navigation
-    if (confirm('Are you sure you want to delete this dashboard?')) {
-      setDashboards((prev) => prev.filter((d) => d.id !== id));
+  const fetchDashboards = async () => {
+    setLoading(true);
+    try {
+      const response = await apiClient.get('/dashboards/');
+      const results = response.data.results || [];
+      const mapped = results.map((d: any) => ({
+        id: d.id,
+        name: d.name,
+        description: d.description,
+        widgets: (d.widgets || []).map((w: any) => ({
+          id: w.id,
+          type: w.type,
+          title: w.name,
+          queryConfig: w.query_config,
+          visualizationSettings: {},
+          layout: {
+            i: w.id,
+            x: w.position_x,
+            y: w.position_y,
+            w: w.width,
+            h: w.height,
+          }
+        })),
+        isShared: false, // will handle backend collaboration if expanded
+        sharedWith: [],
+        ownerId: d.owner_id || '',
+        ownerName: d.owner_name || 'Unknown',
+        createdAt: d.created_at,
+        updatedAt: d.updated_at,
+      }));
+      setDashboards(mapped);
+    } catch (err) {
+      console.error('Error fetching dashboards:', err);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleCreateNew = () => {
-    const newId = `dash-${Date.now()}`;
-    // Create new blank dashboard structure
-    const newDash: Dashboard = {
-      id: newId,
-      name: 'Untitled Dashboard',
-      description: 'A new blank analytics canvas. Connect a dataset and configure your widgets.',
-      widgets: [],
-      isShared: false,
-      sharedWith: [],
-      ownerId: 'usr-001',
-      ownerName: 'Sarah Connor',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    
-    // Add to state
-    setDashboards((prev) => [newDash, ...prev]);
-    // Navigate to builder
-    navigate(`/builder/${newId}`);
+  useEffect(() => {
+    fetchDashboards();
+  }, []);
+
+  const handleDelete = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation(); // prevent card click navigation
+    if (confirm('Are you sure you want to delete this dashboard?')) {
+      try {
+        await apiClient.delete(`/dashboards/${id}/`);
+        setDashboards((prev) => prev.filter((d) => d.id !== id));
+      } catch (err) {
+        console.error('Error deleting dashboard:', err);
+      }
+    }
+  };
+
+  const handleCreateNew = async () => {
+    try {
+      const response = await apiClient.post('/dashboards/', {
+        name: 'Untitled Dashboard',
+        description: 'A new blank analytics canvas. Connect a dataset and configure your widgets.',
+      });
+      const newDash = response.data.data;
+      navigate(`/builder/${newDash.id}`);
+    } catch (err) {
+      console.error('Error creating dashboard:', err);
+    }
   };
 
   const filteredDashboards = dashboards.filter(
@@ -108,8 +147,12 @@ export default function DashboardsList() {
       </div>
 
       {/* Grid List */}
-      {filteredDashboards.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center">
+      {loading && dashboards.length === 0 ? (
+        <div className="flex h-32 items-center justify-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+        </div>
+      ) : filteredDashboards.length === 0 ? (
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card">
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground mb-4">
             <LayoutDashboard className="h-6 w-6" />
           </div>
@@ -131,7 +174,7 @@ export default function DashboardsList() {
             <div
               key={dash.id}
               onClick={() => navigate(`/builder/${dash.id}`)}
-              className="group relative flex flex-col justify-between rounded-2xl border border-border bg-card p-5 shadow-sm transition-all duration-300 hover:border-primary/50 hover:shadow-md hover:shadow-primary/5 cursor-pointer"
+              className="group relative flex flex-col justify-between rounded-2xl border border-border bg-card p-5 shadow-sm transition-all duration-300 hover:border-primary/50 hover:shadow-md hover:shadow-primary/5 cursor-pointer animate-fade-in-up"
             >
               {/* Card Header */}
               <div>

@@ -11,12 +11,20 @@ export const apiClient = axios.create({
   timeout: 10000,
 });
 
-// Request Interceptor: Attach bearer token if present
+// Request Interceptor: Attach bearer token & multi-tenant organization context if present
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    const token = useAuthStore.getState().accessToken;
-    if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
+    const state = useAuthStore.getState();
+    const token = state.accessToken;
+    const user = state.user;
+    
+    if (config.headers) {
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+      if (user?.organizationId) {
+        config.headers['X-Organization-Id'] = user.organizationId;
+      }
     }
     return config;
   },

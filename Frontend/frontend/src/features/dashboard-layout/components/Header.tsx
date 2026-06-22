@@ -3,7 +3,7 @@ import { useAuthStore } from '../../../store/useAuthStore';
 import { useUIStore } from '../../../store/useUIStore';
 import { Bell, Sun, Moon, LogOut, ChevronDown, Building, User, Search, Settings } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { MOCK_NOTIFICATIONS } from '../../../utils/mockData';
+import { apiClient } from '../../../services/apiClient';
 import { cn } from '../../../utils';
 
 interface HeaderProps {
@@ -13,7 +13,7 @@ interface HeaderProps {
 
 export default function Header({ onToggleNotifications, unreadCount }: HeaderProps) {
   const navigate = useNavigate();
-  const { user, clearAuth } = useAuthStore();
+  const { user, clearAuth, setOrganization } = useAuthStore();
   const { theme, toggleTheme } = useUIStore();
   
   const [profileOpen, setProfileOpen] = useState(false);
@@ -22,8 +22,33 @@ export default function Header({ onToggleNotifications, unreadCount }: HeaderPro
   const profileRef = useRef<HTMLDivElement>(null);
   const orgRef = useRef<HTMLDivElement>(null);
   
-  const [activeOrg, setActiveOrg] = useState('Cyberdyne Systems');
-  const orgs = ['Cyberdyne Systems', 'Skynet Labs', 'Tech Resistance Inc'];
+  const [activeOrgName, setActiveOrgName] = useState('Select Organization');
+  const [orgs, setOrgs] = useState<{ id: string; name: string }[]>([]);
+
+  // Fetch tenant organizations list
+  useEffect(() => {
+    const fetchOrgs = async () => {
+      try {
+        const response = await apiClient.get('/organizations/');
+        const results = response.data.results || [];
+        setOrgs(results);
+        
+        const currentOrgId = user?.organizationId;
+        const currentOrg = results.find((o: any) => o.id === currentOrgId);
+        if (currentOrg) {
+          setActiveOrgName(currentOrg.name);
+        } else if (results.length > 0) {
+          setActiveOrgName(results[0].name);
+          setOrganization(results[0].id);
+        }
+      } catch (err) {
+        console.error('Error fetching organizations:', err);
+      }
+    };
+    if (user) {
+      fetchOrgs();
+    }
+  }, [user?.organizationId]);
 
   // Handle clicking outside of dropdowns to close them
   useEffect(() => {
@@ -44,39 +69,44 @@ export default function Header({ onToggleNotifications, unreadCount }: HeaderPro
     navigate('/login');
   };
 
+  const handleSwitchOrg = (org: { id: string; name: string }) => {
+    setOrganization(org.id);
+    setActiveOrgName(org.name);
+    setOrgOpen(false);
+    // Reload dashboard page contextually
+    window.location.reload();
+  };
+
   return (
     <header className="flex h-16 w-full items-center justify-between border-b border-border bg-card px-6 text-foreground z-10">
       {/* Left side: Org Switcher & Search */}
-      <div className="flex items-center gap-6">
+      <div className="flex items-center gap-6 text-xs text-left">
         {/* Org Switcher */}
         <div className="relative" ref={orgRef}>
           <button
             onClick={() => setOrgOpen(!orgOpen)}
-            className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-semibold transition-all hover:bg-muted"
+            className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-semibold transition-all hover:bg-muted text-foreground"
           >
             <Building className="h-4 w-4 text-violet-500" />
-            <span className="max-w-[140px] truncate">{activeOrg}</span>
+            <span className="max-w-[140px] truncate">{activeOrgName}</span>
             <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
           </button>
           
           {orgOpen && (
-            <div className="absolute left-0 mt-2 w-56 rounded-xl border border-border bg-card p-1.5 shadow-xl animate-fade-in-up">
+            <div className="absolute left-0 mt-2 w-56 rounded-xl border border-border bg-card p-1.5 shadow-xl animate-fade-in-up z-20">
               <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                 Switch Organization
               </div>
               {orgs.map((org) => (
                 <button
-                  key={org}
-                  onClick={() => {
-                    setActiveOrg(org);
-                    setOrgOpen(false);
-                  }}
+                  key={org.id}
+                  onClick={() => handleSwitchOrg(org)}
                   className={cn(
                     "flex w-full items-center rounded-lg px-3 py-2 text-sm text-left font-medium transition-colors hover:bg-muted",
-                    activeOrg === org ? "text-primary bg-primary/5" : "text-foreground"
+                    user?.organizationId === org.id ? "text-primary bg-primary/5 font-bold" : "text-foreground"
                   )}
                 >
-                  {org}
+                  {org.name}
                 </button>
               ))}
             </div>
@@ -89,7 +119,7 @@ export default function Header({ onToggleNotifications, unreadCount }: HeaderPro
           <input
             type="text"
             placeholder="Search dashboards, metrics, datasets..."
-            className="w-full rounded-lg border border-border bg-background py-1.5 pr-4 pl-9 text-sm outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary"
+            className="w-full rounded-lg border border-border bg-background py-1.5 pr-4 pl-9 text-sm outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary text-foreground"
           />
         </div>
       </div>
@@ -139,7 +169,7 @@ export default function Header({ onToggleNotifications, unreadCount }: HeaderPro
           </button>
 
           {profileOpen && (
-            <div className="absolute right-0 mt-2 w-56 rounded-xl border border-border bg-card p-1.5 shadow-xl animate-fade-in-up">
+            <div className="absolute right-0 mt-2 w-56 rounded-xl border border-border bg-card p-1.5 shadow-xl animate-fade-in-up z-20 text-xs text-left">
               <div className="border-b border-border px-3 py-2 text-left">
                 <p className="text-sm font-semibold">{user?.name}</p>
                 <p className="text-xs text-muted-foreground truncate">{user?.email}</p>

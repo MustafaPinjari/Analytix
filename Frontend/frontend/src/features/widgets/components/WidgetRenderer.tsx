@@ -1,6 +1,6 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Widget, DataPoint } from '../../../types';
-import { queryMockData } from '../../../utils/mockData';
+import { apiClient } from '../../../services/apiClient';
 import {
   ResponsiveContainer,
   BarChart,
@@ -57,25 +57,74 @@ interface WidgetRendererProps {
 
 export default function WidgetRenderer({ widget }: WidgetRendererProps) {
   const isDark = useUIStore((state) => state.theme === 'dark');
+  const [data, setData] = useState<DataPoint[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Compute queried data reactively
-  const data = useMemo(() => {
-    try {
+  useEffect(() => {
+    let active = true;
+    const fetchWidgetData = async () => {
       const q = widget.queryConfig;
-      if (!q.datasetId) return [];
-      
-      // Map metric arrays
-      const metricsMap = q.metrics.map(m => ({
-        column: m.column,
-        aggregation: m.aggregation,
-        alias: m.alias || `${m.aggregation}_${m.column}`
-      }));
-      
-      return queryMockData(q.datasetId, q.dimensions, metricsMap, q.filters);
-    } catch (err) {
-      console.error(err);
-      return [];
-    }
+      if (!q || !q.datasetId) {
+        setData([]);
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
+
+      try {
+        // Map frontend query configuration to match backend QueryConfigSerializer schema
+        const payload = {
+          dimensions: q.dimensions || [],
+          measures: (q.metrics || []).map((m) => ({
+            field: m.column,
+            aggregation: m.aggregation,
+          })),
+          filters: (q.filters || []).map((f) => ({
+            field: f.column,
+            operator: f.operator,
+            value: f.value,
+          })),
+        };
+
+        const response = await apiClient.post(`/datasets/${q.datasetId}/query/`, payload);
+        
+        if (active) {
+          const results = response.data.results || [];
+          
+          // Map backend key format (field_aggregation) to frontend expected keys (alias or aggregation_field)
+          const mappedResults = results.map((row: any) => {
+            const mappedRow = { ...row };
+            (q.metrics || []).forEach((m) => {
+              const backendKey = `${m.column}_${m.aggregation}`;
+              const frontendKey = m.alias || `${m.aggregation}_${m.column}`;
+              if (row[backendKey] !== undefined) {
+                mappedRow[frontendKey] = row[backendKey];
+              }
+            });
+            return mappedRow;
+          });
+          
+          setData(mappedResults);
+        }
+      } catch (err: any) {
+        console.error('Error fetching widget data:', err);
+        if (active) {
+          setError(err.response?.data?.error?.message || 'Failed to query data.');
+        }
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchWidgetData();
+
+    return () => {
+      active = false;
+    };
   }, [widget.queryConfig]);
 
   const errorFallback = (
@@ -85,6 +134,32 @@ export default function WidgetRenderer({ widget }: WidgetRendererProps) {
       <p className="text-[10px] text-muted-foreground mt-0.5">Please check metric dimensions in editor.</p>
     </div>
   );
+
+  if (loading) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-card p-4">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[180px] w-full p-4 text-center bg-card rounded-xl">
+        <AlertCircle className="h-5 w-5 text-red-500 mb-1 shrink-0" />
+        <p className="text-[10px] font-semibold text-foreground">Query Failed</p>
+        <p className="text-[9px] text-muted-foreground mt-0.5 max-w-[200px] truncate">{error}</p>
+      </div>
+    );
+  }
+
+  if (data.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[180px] w-full p-4 text-center bg-card rounded-xl">
+        <p className="text-xs text-muted-foreground">No records returned</p>
+      </div>
+    );
+  }
 
   return (
     <WidgetErrorBoundary fallback={errorFallback}>
@@ -333,12 +408,11 @@ function PieChartWidget({ widget, data, isDark }: { widget: Widget; data: DataPo
   const metric = widget.queryConfig.metrics[0];
   const valKey = metric ? (metric.alias || `${metric.aggregation}_${metric.column}`) : 'value';
 
-  // Group and sort data for cleanliness
   const pieData = useMemo(() => {
     return data.map((d) => ({
       name: String(d[nameKey] || 'Unknown'),
       value: Number(d[valKey] || 0),
-    })).filter(item => item.value > 0).slice(0, 8); // limit slices
+    })).filter(item => item.value > 0).slice(0, 8);
   }, [data, nameKey, valKey]);
 
   return (
@@ -382,7 +456,6 @@ function TableWidget({ widget, data, isDark }: { widget: Widget; data: DataPoint
   const colDefs = useMemo(() => {
     if (data.length === 0) return [];
     
-    // Create column headers from data keys
     const firstRow = data[0];
     return Object.keys(firstRow).map((key) => ({
       field: key,
