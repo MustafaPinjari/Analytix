@@ -95,3 +95,15 @@ Desktop.ini
 media/
 static/
 staticfiles/
+
+# Node/Web Build & dependencies
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+.env.local
+.env.*.local
+.eslintcache
+.stylelintcache
+*.local
+
