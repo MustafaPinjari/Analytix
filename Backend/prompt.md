@@ -5,7 +5,7 @@ Build the backend architecture and implementation plan for a production-ready Bu
 Tech Stack:
 - Django 5
 - Django REST Framework
-- PostgreSQL
+- SQLite
 - JWT Authentication
 - Celery
 - Redis
