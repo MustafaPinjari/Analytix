@@ -146,6 +146,10 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # CORS Configuration
 CORS_ALLOW_ALL_ORIGINS = True  # For dev environment, restrict in production
+from corsheaders.defaults import default_headers
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    "x-organization-id",
+]
 
 # Django REST Framework Configuration
 REST_FRAMEWORK = {

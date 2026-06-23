@@ -26,8 +26,12 @@ class WidgetSerializer(serializers.ModelSerializer):
     def validate_query_config(self, value):
         if not isinstance(value, dict):
             raise serializers.ValidationError("query_config must be a valid JSON object.")
-        if "measures" not in value or not isinstance(value["measures"], list) or len(value["measures"]) == 0:
-            raise serializers.ValidationError("query_config must contain a 'measures' list with at least one aggregate.")
+        
+        has_measures = "measures" in value and isinstance(value["measures"], list) and len(value["measures"]) > 0
+        has_metrics = "metrics" in value and isinstance(value["metrics"], list) and len(value["metrics"]) > 0
+        
+        if not (has_measures or has_metrics):
+            raise serializers.ValidationError("query_config must contain a 'measures' or 'metrics' list with at least one aggregate.")
         return value
 
     def to_representation(self, instance):

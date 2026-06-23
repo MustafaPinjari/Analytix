@@ -10,6 +10,18 @@ class TenantMiddleware(MiddlewareMixin):
         request.tenant = None
         request.user_org_role = None
 
+        # Try to authenticate user via JWT since DRF authentication runs after middleware
+        if not (request.user and request.user.is_authenticated):
+            try:
+                from rest_framework_simplejwt.authentication import JWTAuthentication
+                authenticator = JWTAuthentication()
+                auth_result = authenticator.authenticate(request)
+                if auth_result:
+                    user, token = auth_result
+                    request.user = user
+            except Exception:
+                pass
+
         org_id_str = request.headers.get("X-Organization-Id")
 
         if org_id_str:
@@ -31,8 +43,6 @@ class TenantMiddleware(MiddlewareMixin):
                 )
 
             # Check role mapping if user is authenticated
-            # Note: AuthenticationMiddleware runs before this in settings configuration,
-            # so request.user is already populated by session or JWT token auth.
             if request.user and request.user.is_authenticated:
                 if request.user.is_superuser:
                     request.user_org_role = "SUPER_ADMIN"

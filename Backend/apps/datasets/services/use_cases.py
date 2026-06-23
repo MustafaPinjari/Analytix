@@ -58,7 +58,7 @@ class ProcessDatasetUploadUseCase:
                 "original_name": col,
                 "name": sanitized_name,
                 "type": inferred,
-                "nullable": series.isnull().any()
+                "nullable": bool(series.isnull().any())
             })
 
         # Calculate row count
@@ -82,16 +82,12 @@ class ProcessDatasetUploadUseCase:
 
         try:
             if file_type.upper() == "CSV":
-                chunksize = 50000
-                first_chunk = True
-                for chunk in pd.read_csv(file_path, chunksize=chunksize):
-                    chunk.columns = [
-                        "_".join(filter(None, "".join(c if c.isalnum() else "_" for c in col.strip().lower()).split("_")))
-                        for col in chunk.columns
-                    ]
-                    # Write to Parquet (PyArrow support)
-                    chunk.to_parquet(parquet_storage_path, engine="pyarrow", append=not first_chunk)
-                    first_chunk = False
+                df = pd.read_csv(file_path)
+                df.columns = [
+                    "_".join(filter(None, "".join(c if c.isalnum() else "_" for c in col.strip().lower()).split("_")))
+                    for col in df.columns
+                ]
+                df.to_parquet(parquet_storage_path, engine="pyarrow")
             else:
                 df_full = pd.read_excel(file_path)
                 df_full.columns = [
