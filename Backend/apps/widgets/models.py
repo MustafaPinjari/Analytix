@@ -15,6 +15,7 @@ class Widget(models.Model):
         ("RADAR", "Radar Chart"),
         ("SCATTER", "Scatter Chart"),
         ("GAUGE", "Gauge Chart"),
+        ("CUSTOM", "Custom Chart"),
     )
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

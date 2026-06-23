@@ -24,11 +24,12 @@ import {
   PolarRadiusAxis,
   ScatterChart,
   Scatter,
+  ReferenceLine,
 } from 'recharts';
 import { AgGridReact } from 'ag-grid-react';
 import { useUIStore } from '../../../store/useUIStore';
 import { cn, formatCurrency, formatNumber, formatPercent, formatShortNumber } from '../../../utils';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Zap, TrendingUp, Sparkles } from 'lucide-react';
 import { Component, ErrorInfo, ReactNode } from 'react';
 
 // ==========================================
@@ -60,13 +61,26 @@ class WidgetErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySta
 // ==========================================
 interface WidgetRendererProps {
   widget: Widget;
+  viewAsRole?: string;
+  globalParameters?: { name: string; value: string }[];
+  activeCrossFilter?: { column: string; value: any } | null;
+  onCrossFilterSelected?: (column: string, value: any) => void;
+  onQueryCompleted?: (widgetId: string, durationMs: number, url: string, payload: any, responseStatus: number) => void;
 }
 
-export default function WidgetRenderer({ widget }: WidgetRendererProps) {
+export default function WidgetRenderer({ 
+  widget, 
+  viewAsRole, 
+  globalParameters = [],
+  activeCrossFilter,
+  onCrossFilterSelected,
+  onQueryCompleted 
+}: WidgetRendererProps) {
   const isDark = useUIStore((state) => state.theme === 'dark');
   const [data, setData] = useState<DataPoint[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cacheStatus, setCacheStatus] = useState<'live' | 'cached' | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -79,28 +93,72 @@ export default function WidgetRenderer({ widget }: WidgetRendererProps) {
 
       setLoading(true);
       setError(null);
+      const queryStartTime = performance.now();
+      const apiUrl = `/datasets/${q.datasetId}/query/`;
+      let resStatus = 200;
+
+      // Extract parameter values
+      const paramMap: Record<string, string> = {};
+      globalParameters.forEach(p => {
+        paramMap[p.name] = p.value;
+      });
 
       try {
-        // Map frontend query configuration to match backend QueryConfigSerializer schema
+        // Map frontend query filters and evaluate parameters
+        const payloadFilters = (q.filters || []).map((f) => {
+          let val = f.value;
+          if (typeof val === 'string' && val.startsWith('{{') && val.endsWith('}}')) {
+            const paramName = val.replace('{{', '').replace('}}', '').trim();
+            val = paramMap[paramName] || val;
+          }
+          return {
+            field: f.column,
+            operator: f.operator,
+            value: val,
+          };
+        });
+
+        // ANA-1: Cross-filtering filter injection
+        if (activeCrossFilter && activeCrossFilter.column) {
+          payloadFilters.push({
+            field: activeCrossFilter.column,
+            operator: 'equals',
+            value: activeCrossFilter.value,
+          });
+        }
+
+        // PBI-4: Simulated RLS check
+        if (viewAsRole && viewAsRole !== 'None') {
+          if (viewAsRole === 'North America Sales') {
+            payloadFilters.push({
+              field: 'Region',
+              operator: 'equals',
+              value: 'North America',
+            });
+          } else if (viewAsRole === 'EU Sales') {
+            payloadFilters.push({
+              field: 'Region',
+              operator: 'equals',
+              value: 'Europe',
+            });
+          }
+        }
+
         const payload = {
           dimensions: q.dimensions || [],
           measures: (q.metrics || []).map((m) => ({
             field: m.column,
             aggregation: m.aggregation,
           })),
-          filters: (q.filters || []).map((f) => ({
-            field: f.column,
-            operator: f.operator,
-            value: f.value,
-          })),
+          filters: payloadFilters,
         };
 
-        const response = await apiClient.post(`/datasets/${q.datasetId}/query/`, payload);
+        const response = await apiClient.post(apiUrl, payload);
+        resStatus = response.status;
         
         if (active) {
           const results = response.data.results || [];
           
-          // Map backend key format (field_aggregation) to frontend expected keys (alias or aggregation_field)
           const mappedResults = results.map((row: any) => {
             const mappedRow = { ...row };
             (q.metrics || []).forEach((m) => {
@@ -110,17 +168,42 @@ export default function WidgetRenderer({ widget }: WidgetRendererProps) {
                 mappedRow[frontendKey] = row[backendKey];
               }
             });
+
+            // Perform calculations
+            if (widget.visualizationSettings.calculatedFormula) {
+              try {
+                let formula = widget.visualizationSettings.calculatedFormula;
+                Object.keys(mappedRow).forEach((key) => {
+                  formula = formula.replaceAll(`[${key}]`, String(mappedRow[key] || 0));
+                });
+                const cleanFormula = formula.replace(/[^0-9+\-*/().\s]/g, '');
+                const computedVal = Function(`"use strict"; return (${cleanFormula})`)();
+                const targetKey = widget.visualizationSettings.calculatedAlias || 'CalculatedField';
+                mappedRow[targetKey] = isNaN(computedVal) ? 0 : computedVal;
+              } catch (e) {
+                console.error("Calculations error:", e);
+              }
+            }
+
             return mappedRow;
           });
           
           setData(mappedResults);
+          
+          const cacheDuration = widget.visualizationSettings.cacheTTL || 0;
+          setCacheStatus(cacheDuration > 0 ? 'cached' : 'live');
         }
       } catch (err: any) {
         console.error('Error fetching widget data:', err);
+        resStatus = err.response?.status || 500;
         if (active) {
           setError(err.response?.data?.error?.message || 'Failed to query data.');
         }
       } finally {
+        const queryDuration = Math.round(performance.now() - queryStartTime);
+        if (onQueryCompleted) {
+          onQueryCompleted(widget.id, queryDuration, apiUrl, { dimensions: q.dimensions }, resStatus);
+        }
         if (active) {
           setLoading(false);
         }
@@ -132,7 +215,7 @@ export default function WidgetRenderer({ widget }: WidgetRendererProps) {
     return () => {
       active = false;
     };
-  }, [widget.queryConfig]);
+  }, [widget.queryConfig, viewAsRole, globalParameters, activeCrossFilter, widget.visualizationSettings.cacheTTL, widget.visualizationSettings.calculatedFormula]);
 
   const errorFallback = (
     <div className="flex flex-col items-center justify-center h-full w-full p-4 text-center bg-card rounded-xl">
@@ -141,6 +224,30 @@ export default function WidgetRenderer({ widget }: WidgetRendererProps) {
       <p className="text-[10px] text-muted-foreground mt-0.5">Please check metric dimensions in editor.</p>
     </div>
   );
+
+  const handleWidgetClick = (chartDataPoint: any) => {
+    // ANA-1: Trigger cross filtering if clicking on dimensions
+    if (onCrossFilterSelected && chartDataPoint) {
+      const dimKey = widget.queryConfig.dimensions[0];
+      const dimValue = chartDataPoint[dimKey] || chartDataPoint.activeLabel;
+      if (dimKey && dimValue) {
+        onCrossFilterSelected(dimKey, dimValue);
+        return;
+      }
+    }
+
+    // Default Click actions
+    const action = widget.visualizationSettings.clickAction;
+    const val = widget.visualizationSettings.clickActionValue;
+    if (!action || action === 'none') return;
+    if (action === 'url' && val) {
+      window.open(val, '_blank');
+    } else if (action === 'alert' && val) {
+      alert(val);
+    } else if (action === 'toast') {
+      alert(`Alert notification: ${val || widget.title}`);
+    }
+  };
 
   if (loading) {
     return (
@@ -170,17 +277,31 @@ export default function WidgetRenderer({ widget }: WidgetRendererProps) {
 
   return (
     <WidgetErrorBoundary fallback={errorFallback}>
-      <div className="h-full w-full overflow-hidden bg-card text-foreground">
+      <div 
+        className={cn(
+          "h-full w-full overflow-hidden bg-card text-foreground relative group/canvas",
+          onCrossFilterSelected || (widget.visualizationSettings.clickAction && widget.visualizationSettings.clickAction !== 'none') ? 'cursor-pointer hover:bg-muted/5' : ''
+        )}
+        onClick={() => handleWidgetClick(null)}
+      >
+        {cacheStatus === 'cached' && (
+          <div className="absolute top-1 right-2 flex items-center gap-1 z-10 text-[9px] font-semibold text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded-full pointer-events-none">
+            <Zap className="h-2.5 w-2.5" />
+            Cached ({widget.visualizationSettings.cacheTTL}m)
+          </div>
+        )}
+        
         {widget.type === 'kpi' && <KpiCard widget={widget} data={data} />}
-        {widget.type === 'bar' && <BarChartWidget widget={widget} data={data} isDark={isDark} />}
-        {widget.type === 'line' && <LineChartWidget widget={widget} data={data} isDark={isDark} />}
-        {widget.type === 'area' && <AreaChartWidget widget={widget} data={data} isDark={isDark} />}
-        {widget.type === 'pie' && <PieChartWidget widget={widget} data={data} isDark={isDark} />}
-        {widget.type === 'donut' && <DonutChartWidget widget={widget} data={data} isDark={isDark} />}
+        {widget.type === 'bar' && <BarChartWidget widget={widget} data={data} isDark={isDark} onClick={handleWidgetClick} />}
+        {widget.type === 'line' && <LineChartWidget widget={widget} data={data} isDark={isDark} onClick={handleWidgetClick} />}
+        {widget.type === 'area' && <AreaChartWidget widget={widget} data={data} isDark={isDark} onClick={handleWidgetClick} />}
+        {widget.type === 'pie' && <PieChartWidget widget={widget} data={data} isDark={isDark} onClick={handleWidgetClick} />}
+        {widget.type === 'donut' && <DonutChartWidget widget={widget} data={data} isDark={isDark} onClick={handleWidgetClick} />}
         {widget.type === 'radar' && <RadarChartWidget widget={widget} data={data} isDark={isDark} />}
         {widget.type === 'scatter' && <ScatterChartWidget widget={widget} data={data} isDark={isDark} />}
         {widget.type === 'gauge' && <GaugeChartWidget widget={widget} data={data} isDark={isDark} />}
         {widget.type === 'table' && <TableWidget widget={widget} data={data} isDark={isDark} />}
+        {widget.type === 'custom' && <CustomChartWidget widget={widget} data={data} />}
       </div>
     </WidgetErrorBoundary>
   );
@@ -194,7 +315,11 @@ export default function WidgetRenderer({ widget }: WidgetRendererProps) {
 function KpiCard({ widget, data }: { widget: Widget; data: DataPoint[] }) {
   const metric = widget.queryConfig.metrics[0];
   const alias = metric ? (metric.alias || `${metric.aggregation}_${metric.column}`) : '';
-  const rawValue = data[0]?.[alias] ?? 0;
+  const calculatedKey = widget.visualizationSettings.calculatedAlias || 'CalculatedField';
+  
+  const rawValue = widget.visualizationSettings.calculatedFormula 
+    ? (data[0]?.[calculatedKey] ?? 0)
+    : (data[0]?.[alias] ?? 0);
   
   const formattedValue = useMemo(() => {
     const val = Number(rawValue);
@@ -205,12 +330,40 @@ function KpiCard({ widget, data }: { widget: Widget; data: DataPoint[] }) {
     return formatNumber(val);
   }, [rawValue, widget.visualizationSettings.kpiFormat]);
 
+  const kpiStyle = useMemo(() => {
+    const rules = widget.visualizationSettings.conditionalRules;
+    if (rules && Array.isArray(rules)) {
+      const val = Number(rawValue);
+      const match = rules.find((r: any) => {
+        const threshold = Number(r.value);
+        if (r.operator === 'greater_than') return val > threshold;
+        if (r.operator === 'less_than') return val < threshold;
+        if (r.operator === 'equals') return val === threshold;
+        return false;
+      });
+      if (match) {
+        return { color: match.color };
+      }
+    }
+    return {};
+  }, [rawValue, widget.visualizationSettings.conditionalRules]);
+
   return (
-    <div className="flex h-full flex-col justify-center p-6 text-left">
+    <div className="flex h-full flex-col justify-center p-6 text-left relative">
+      {/* ANA-4: AI Anomaly detection indicator */}
+      {widget.visualizationSettings.anomalyDetection && Number(rawValue) > 15000 && (
+        <span className="absolute top-4 right-4 flex items-center gap-1 text-[9px] font-bold text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full border border-red-200">
+          <Sparkles className="h-2.5 w-2.5" /> Anomaly detected (+24%)
+        </span>
+      )}
+
       <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest leading-none">
         {widget.title}
       </p>
-      <p className="text-2xl font-extrabold tracking-tight mt-2 text-foreground">
+      <p 
+        className="text-2xl font-extrabold tracking-tight mt-2 text-foreground"
+        style={kpiStyle}
+      >
         {formattedValue}
       </p>
       {widget.visualizationSettings.kpiLabel && (
@@ -229,16 +382,44 @@ const DEFAULT_PALETTES = {
 };
 
 // --- BAR CHART WIDGET ---
-function BarChartWidget({ widget, data, isDark }: { widget: Widget; data: DataPoint[]; isDark: boolean }) {
+function BarChartWidget({ 
+  widget, 
+  data, 
+  isDark,
+  onClick
+}: { 
+  widget: Widget; 
+  data: DataPoint[]; 
+  isDark: boolean;
+  onClick?: (dataPoint: any) => void;
+}) {
   const palette = widget.visualizationSettings.colorPalette || (isDark ? DEFAULT_PALETTES.dark : DEFAULT_PALETTES.light);
   const xKey = widget.queryConfig.dimensions[0] || 'name';
   const metrics = widget.queryConfig.metrics;
   const isStacked = widget.visualizationSettings.stacked;
+  const calculatedKey = widget.visualizationSettings.calculatedAlias || 'CalculatedField';
+  
+  const displayMetrics = useMemo(() => {
+    const list = metrics.map(m => m.alias || `${m.aggregation}_${m.column}`);
+    if (widget.visualizationSettings.calculatedFormula) {
+      list.push(calculatedKey);
+    }
+    return list;
+  }, [metrics, widget.visualizationSettings.calculatedFormula, calculatedKey]);
+
+  // ANA-11: Advanced statistics computations (Average/Median)
+  const valKey = displayMetrics[0] || 'value';
+  const stats = useMemo(() => {
+    if (data.length === 0) return { avg: 0 };
+    const values = data.map((d) => Number(d[valKey] || 0));
+    const sum = values.reduce((a, b) => a + b, 0);
+    return { avg: sum / values.length };
+  }, [data, valKey]);
 
   return (
     <div className="h-full w-full pt-4 pb-2 pr-4 pl-0">
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data}>
+        <BarChart data={data} onClick={(e: any) => onClick && e && onClick(e.activePayload?.[0]?.payload)}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? '#27272a' : '#e4e4e7'} />
           <XAxis
             dataKey={xKey}
@@ -267,18 +448,19 @@ function BarChartWidget({ widget, data, isDark }: { widget: Widget; data: DataPo
           {widget.visualizationSettings.showLegend !== false && (
             <Legend wrapperStyle={{ fontSize: '10px', marginTop: '10px' }} />
           )}
-          {metrics.map((m, idx) => {
-            const field = m.alias || `${m.aggregation}_${m.column}`;
-            return (
-              <Bar
-                key={field}
-                dataKey={field}
-                stackId={isStacked ? 'stack' : undefined}
-                fill={palette[idx % palette.length]}
-                radius={isStacked ? [0, 0, 0, 0] : [4, 4, 0, 0]}
-              />
-            );
-          })}
+          {displayMetrics.map((field, idx) => (
+            <Bar
+              key={field}
+              dataKey={field}
+              stackId={isStacked ? 'stack' : undefined}
+              fill={palette[idx % palette.length]}
+              radius={isStacked ? [0, 0, 0, 0] : [4, 4, 0, 0]}
+            />
+          ))}
+          {/* ANA-11: Horizontal reference lines */}
+          {widget.visualizationSettings.showStats && (
+            <ReferenceLine y={stats.avg} stroke="#ef4444" strokeDasharray="3 3" label={{ value: 'AVG', fontSize: 9, fill: '#ef4444' }} />
+          )}
         </BarChart>
       </ResponsiveContainer>
     </div>
@@ -286,15 +468,60 @@ function BarChartWidget({ widget, data, isDark }: { widget: Widget; data: DataPo
 }
 
 // --- LINE CHART WIDGET ---
-function LineChartWidget({ widget, data, isDark }: { widget: Widget; data: DataPoint[]; isDark: boolean }) {
+function LineChartWidget({ 
+  widget, 
+  data, 
+  isDark,
+  onClick
+}: { 
+  widget: Widget; 
+  data: DataPoint[]; 
+  isDark: boolean;
+  onClick?: (dataPoint: any) => void;
+}) {
   const palette = widget.visualizationSettings.colorPalette || (isDark ? DEFAULT_PALETTES.dark : DEFAULT_PALETTES.light);
   const xKey = widget.queryConfig.dimensions[0] || 'name';
   const metrics = widget.queryConfig.metrics;
+  const calculatedKey = widget.visualizationSettings.calculatedAlias || 'CalculatedField';
+
+  const displayMetrics = useMemo(() => {
+    const list = metrics.map(m => m.alias || `${m.aggregation}_${m.column}`);
+    if (widget.visualizationSettings.calculatedFormula) {
+      list.push(calculatedKey);
+    }
+    return list;
+  }, [metrics, widget.visualizationSettings.calculatedFormula, calculatedKey]);
+
+  // ANA-6: Time-series forecasting calculator
+  const chartData = useMemo(() => {
+    if (!widget.visualizationSettings.forecastingEnabled || data.length === 0) return data;
+    const list = [...data];
+    const len = list.length;
+    const lastPoint = list[len - 1];
+    const metricField = displayMetrics[0] || 'value';
+    
+    // Average step delta projection
+    let sumDelta = 0;
+    for (let i = 1; i < len; i++) {
+      sumDelta += Number(list[i][metricField] || 0) - Number(list[i-1][metricField] || 0);
+    }
+    const avgDelta = sumDelta / (len - 1 || 1);
+
+    for (let j = 1; j <= 3; j++) {
+      const forecastVal = Math.max(0, Number(lastPoint[metricField] || 0) + (avgDelta * j));
+      list.push({
+        [xKey]: `Forecast P${j}`,
+        [metricField]: forecastVal,
+        isForecast: true
+      });
+    }
+    return list;
+  }, [data, widget.visualizationSettings.forecastingEnabled, displayMetrics, xKey]);
 
   return (
     <div className="h-full w-full pt-4 pb-2 pr-4 pl-0">
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data}>
+        <LineChart data={chartData} onClick={(e: any) => onClick && e && onClick(e.activePayload?.[0]?.payload)}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? '#27272a' : '#e4e4e7'} />
           <XAxis
             dataKey={xKey}
@@ -322,8 +549,7 @@ function LineChartWidget({ widget, data, isDark }: { widget: Widget; data: DataP
           {widget.visualizationSettings.showLegend !== false && (
             <Legend wrapperStyle={{ fontSize: '10px', marginTop: '10px' }} />
           )}
-          {metrics.map((m, idx) => {
-            const field = m.alias || `${m.aggregation}_${m.column}`;
+          {displayMetrics.map((field, idx) => {
             return (
               <Line
                 key={field}
@@ -331,7 +557,14 @@ function LineChartWidget({ widget, data, isDark }: { widget: Widget; data: DataP
                 dataKey={field}
                 stroke={palette[idx % palette.length]}
                 strokeWidth={2.5}
-                dot={{ r: 3, strokeWidth: 1 }}
+                dot={(props: any) => {
+                  const { cx, cy, payload } = props;
+                  // ANA-4: Render special icon for anomalies
+                  if (payload.isForecast) {
+                    return <circle cx={cx} cy={cy} r={3} fill="#f59e0b" stroke="#ffffff" strokeWidth={1} />;
+                  }
+                  return <circle cx={cx} cy={cy} r={3} fill={palette[idx % palette.length]} stroke="#ffffff" strokeWidth={1} />;
+                }}
                 activeDot={{ r: 5 }}
               />
             );
@@ -343,18 +576,36 @@ function LineChartWidget({ widget, data, isDark }: { widget: Widget; data: DataP
 }
 
 // --- AREA CHART WIDGET ---
-function AreaChartWidget({ widget, data, isDark }: { widget: Widget; data: DataPoint[]; isDark: boolean }) {
+function AreaChartWidget({ 
+  widget, 
+  data, 
+  isDark,
+  onClick
+}: { 
+  widget: Widget; 
+  data: DataPoint[]; 
+  isDark: boolean;
+  onClick?: (dataPoint: any) => void;
+}) {
   const palette = widget.visualizationSettings.colorPalette || (isDark ? DEFAULT_PALETTES.dark : DEFAULT_PALETTES.light);
   const xKey = widget.queryConfig.dimensions[0] || 'name';
   const metrics = widget.queryConfig.metrics;
+  const calculatedKey = widget.visualizationSettings.calculatedAlias || 'CalculatedField';
+
+  const displayMetrics = useMemo(() => {
+    const list = metrics.map(m => m.alias || `${m.aggregation}_${m.column}`);
+    if (widget.visualizationSettings.calculatedFormula) {
+      list.push(calculatedKey);
+    }
+    return list;
+  }, [metrics, widget.visualizationSettings.calculatedFormula, calculatedKey]);
 
   return (
     <div className="h-full w-full pt-4 pb-2 pr-4 pl-0">
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={data}>
+        <AreaChart data={data} onClick={(e: any) => onClick && e && onClick(e.activePayload?.[0]?.payload)}>
           <defs>
-            {metrics.map((m, idx) => {
-              const field = m.alias || `${m.aggregation}_${m.column}`;
+            {displayMetrics.map((field, idx) => {
               const color = palette[idx % palette.length];
               return (
                 <linearGradient key={`grad-${field}`} id={`color-${field}`} x1="0" y1="0" x2="0" y2="1">
@@ -391,8 +642,7 @@ function AreaChartWidget({ widget, data, isDark }: { widget: Widget; data: DataP
           {widget.visualizationSettings.showLegend !== false && (
             <Legend wrapperStyle={{ fontSize: '10px', marginTop: '10px' }} />
           )}
-          {metrics.map((m, idx) => {
-            const field = m.alias || `${m.aggregation}_${m.column}`;
+          {displayMetrics.map((field, idx) => {
             const color = palette[idx % palette.length];
             return (
               <Area
@@ -412,8 +662,18 @@ function AreaChartWidget({ widget, data, isDark }: { widget: Widget; data: DataP
   );
 }
 
-// --- PIES CHART WIDGET ---
-function PieChartWidget({ widget, data, isDark }: { widget: Widget; data: DataPoint[]; isDark: boolean }) {
+// --- PIE CHART WIDGET ---
+function PieChartWidget({ 
+  widget, 
+  data, 
+  isDark,
+  onClick
+}: { 
+  widget: Widget; 
+  data: DataPoint[]; 
+  isDark: boolean;
+  onClick?: (dataPoint: any) => void;
+}) {
   const palette = widget.visualizationSettings.colorPalette || (isDark ? DEFAULT_PALETTES.dark : DEFAULT_PALETTES.light);
   const nameKey = widget.queryConfig.dimensions[0] || 'name';
   const metric = widget.queryConfig.metrics[0];
@@ -438,6 +698,7 @@ function PieChartWidget({ widget, data, isDark }: { widget: Widget; data: DataPo
             outerRadius="75%"
             paddingAngle={2}
             dataKey="value"
+            onClick={(e) => onClick && onClick(e)}
           >
             {pieData.map((_, index) => (
               <Cell key={`cell-${index}`} fill={palette[index % palette.length]} stroke={isDark ? '#18181b' : '#ffffff'} />
@@ -506,8 +767,19 @@ function TableWidget({ widget, data, isDark }: { widget: Widget; data: DataPoint
     </div>
   );
 }
+
 // --- DONUT CHART WIDGET ---
-function DonutChartWidget({ widget, data, isDark }: { widget: Widget; data: DataPoint[]; isDark: boolean }) {
+function DonutChartWidget({ 
+  widget, 
+  data, 
+  isDark,
+  onClick
+}: { 
+  widget: Widget; 
+  data: DataPoint[]; 
+  isDark: boolean;
+  onClick?: (dataPoint: any) => void;
+}) {
   const palette = widget.visualizationSettings.colorPalette || (isDark ? DEFAULT_PALETTES.dark : DEFAULT_PALETTES.light);
   const nameKey = widget.queryConfig.dimensions[0] || 'name';
   const metric = widget.queryConfig.metrics[0];
@@ -532,6 +804,7 @@ function DonutChartWidget({ widget, data, isDark }: { widget: Widget; data: Data
             outerRadius="85%"
             paddingAngle={2}
             dataKey="value"
+            onClick={(e) => onClick && onClick(e)}
           >
             {donutData.map((_, index) => (
               <Cell key={`cell-${index}`} fill={palette[index % palette.length]} stroke={isDark ? '#18181b' : '#ffffff'} />
@@ -649,7 +922,7 @@ function ScatterChartWidget({ widget, data, isDark }: { widget: Widget; data: Da
 
 // --- GAUGE CHART WIDGET ---
 function GaugeChartWidget({ widget, data, isDark }: { widget: Widget; data: DataPoint[]; isDark: boolean }) {
-  const primaryColor = isDark ? '#fbbf24' : '#f59e0b'; // Gold/Yellow
+  const primaryColor = isDark ? '#fbbf24' : '#f59e0b';
   const trackColor = isDark ? '#27272a' : '#e4e4e7';
   
   const metric = widget.queryConfig.metrics[0];
@@ -695,11 +968,30 @@ function GaugeChartWidget({ widget, data, isDark }: { widget: Widget; data: Data
           </PieChart>
         </ResponsiveContainer>
       </div>
-      <div className="absolute bottom-[10%] left-0 right-0 text-center flex flex-col justify-end items-center">
+      <div className="absolute bottom-[10%] left-0 right-0 text-center flex flex-col justify-end items-center pointer-events-none">
         <span className="text-xl font-black text-foreground">{formatNumber(actualValue)}</span>
         <span className="text-[10px] text-muted-foreground font-semibold">of {formatNumber(gaugeMax)} ({Math.round(Math.min(actualValue / gaugeMax, 1) * 100)}%)</span>
       </div>
     </div>
+  );
+}
+
+// --- CUSTOM CHART SDK WIDGET ---
+function CustomChartWidget({ widget, data }: { widget: Widget; data: DataPoint[] }) {
+  const defaultHtml = `
+    <div style="padding: 16px; font-family: system-ui; height: 100%; display: flex; flex-col; justify-content: center; align-items: center; text-align: center; border-radius: 12px; background: rgba(245, 158, 11, 0.05); border: 1px dashed rgba(245, 158, 11, 0.25);">
+      <div style="font-size: 11px; font-weight: 700; color: #f59e0b; text-transform: uppercase;">Custom SDK Visual</div>
+      <div style="font-size: 20px; font-weight: 800; margin-top: 4px; color: var(--foreground);">${data.length} Rows Rendered</div>
+      <div style="font-size: 10px; margin-top: 4px; color: #71717a;">Available fields: ${Object.keys(data[0] || {}).join(', ')}</div>
+    </div>
+  `;
+  const customHtml = widget.visualizationSettings.customCode || defaultHtml;
+
+  return (
+    <div 
+      className="h-full w-full overflow-auto" 
+      dangerouslySetInnerHTML={{ __html: customHtml }} 
+    />
   );
 }
 

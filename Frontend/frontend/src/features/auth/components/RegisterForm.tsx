@@ -4,7 +4,6 @@ import * as z from 'zod';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../../store/useAuthStore';
 import { apiClient } from '../../../services/apiClient';
-import { MOCK_USER } from '../../../utils/mockData';
 import { useState } from 'react';
 import { User, Mail, Building2, Lock } from 'lucide-react';
 
@@ -65,32 +64,33 @@ export default function RegisterForm() {
   };
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-1.5 text-left">
-        <h2 className="text-xl font-bold tracking-tight text-foreground">Create your account</h2>
-        <p className="text-xs text-muted-foreground">
+    <div className="flex flex-col gap-6 text-xs text-left">
+      <div className="flex flex-col gap-1 text-left">
+        <h2 className="text-2xl font-black tracking-tight text-zinc-900">Create your account</h2>
+        <p className="text-xs text-zinc-400 font-semibold mt-0.5">
           Get started with Analytix BI and unleash your analytics
         </p>
       </div>
 
       {apiError && (
-        <div className="rounded-lg border border-red-900/50 bg-red-950/30 p-3 text-xs text-red-400">
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-500 font-semibold">
           {apiError}
         </div>
       )}
 
-      <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-3.5 text-left text-xs">
-        <div className="flex flex-col gap-1">
-          <label className="font-semibold text-muted-foreground" htmlFor="name">
+      <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4 text-left">
+        {/* Full Name */}
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-semibold text-zinc-700" htmlFor="name">
             Full Name
           </label>
           <div className="relative flex items-center">
-            <User className="absolute left-3.5 h-4 w-4 text-muted-foreground/80" />
+            <User className="absolute left-3.5 h-4 w-4 text-zinc-400" />
             <input
               id="name"
               type="text"
               placeholder="John Doe"
-              className="w-full rounded-lg border border-border bg-slate-50/50 pl-10 pr-3.5 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary"
+              className="w-full rounded-lg border border-zinc-200/80 bg-[#F0F4F9]/70 pl-10 pr-3.5 py-2.5 text-sm text-zinc-900 placeholder-zinc-400 outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary font-medium"
               {...register('name')}
               aria-invalid={errors.name ? 'true' : 'false'}
             />
@@ -100,17 +100,18 @@ export default function RegisterForm() {
           )}
         </div>
 
-        <div className="flex flex-col gap-1">
-          <label className="font-semibold text-muted-foreground" htmlFor="email">
+        {/* Email Address */}
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-semibold text-zinc-700" htmlFor="email">
             Email address
           </label>
           <div className="relative flex items-center">
-            <Mail className="absolute left-3.5 h-4 w-4 text-muted-foreground/80" />
+            <Mail className="absolute left-3.5 h-4 w-4 text-zinc-400" />
             <input
               id="email"
               type="email"
               placeholder="name@company.com"
-              className="w-full rounded-lg border border-border bg-slate-50/50 pl-10 pr-3.5 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary"
+              className="w-full rounded-lg border border-zinc-200/80 bg-[#F0F4F9]/70 pl-10 pr-3.5 py-2.5 text-sm text-zinc-900 placeholder-zinc-400 outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary font-medium"
               {...register('email')}
               aria-invalid={errors.email ? 'true' : 'false'}
             />
@@ -120,17 +121,18 @@ export default function RegisterForm() {
           )}
         </div>
 
-        <div className="flex flex-col gap-1">
-          <label className="font-semibold text-muted-foreground" htmlFor="orgName">
+        {/* Company Name */}
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-semibold text-zinc-700" htmlFor="orgName">
             Company Name
           </label>
           <div className="relative flex items-center">
-            <Building2 className="absolute left-3.5 h-4 w-4 text-muted-foreground/80" />
+            <Building2 className="absolute left-3.5 h-4 w-4 text-zinc-400" />
             <input
               id="orgName"
               type="text"
               placeholder="Acme Corp"
-              className="w-full rounded-lg border border-border bg-slate-50/50 pl-10 pr-3.5 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary"
+              className="w-full rounded-lg border border-zinc-200/80 bg-[#F0F4F9]/70 pl-10 pr-3.5 py-2.5 text-sm text-zinc-900 placeholder-zinc-400 outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary font-medium"
               {...register('orgName')}
               aria-invalid={errors.orgName ? 'true' : 'false'}
             />
@@ -140,18 +142,19 @@ export default function RegisterForm() {
           )}
         </div>
 
+        {/* Password Group */}
         <div className="grid grid-cols-2 gap-3">
-          <div className="flex flex-col gap-1">
-            <label className="font-semibold text-muted-foreground" htmlFor="password">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold text-zinc-700" htmlFor="password">
               Password
             </label>
             <div className="relative flex items-center">
-              <Lock className="absolute left-3.5 h-4 w-4 text-muted-foreground/80" />
+              <Lock className="absolute left-3.5 h-4 w-4 text-zinc-400" />
               <input
                 id="password"
                 type="password"
-                placeholder="•••••"
-                className="w-full rounded-lg border border-border bg-slate-50/50 pl-10 pr-3.5 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary"
+                placeholder="••••••"
+                className="w-full rounded-lg border border-zinc-200/80 bg-[#F0F4F9]/70 pl-10 pr-3.5 py-2.5 text-sm text-zinc-900 placeholder-zinc-400 outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary font-medium"
                 {...register('password')}
                 aria-invalid={errors.password ? 'true' : 'false'}
               />
@@ -161,17 +164,17 @@ export default function RegisterForm() {
             )}
           </div>
 
-          <div className="flex flex-col gap-1">
-            <label className="font-semibold text-muted-foreground" htmlFor="confirmPassword">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold text-zinc-700" htmlFor="confirmPassword">
               Confirm
             </label>
             <div className="relative flex items-center">
-              <Lock className="absolute left-3.5 h-4 w-4 text-muted-foreground/80" />
+              <Lock className="absolute left-3.5 h-4 w-4 text-zinc-400" />
               <input
                 id="confirmPassword"
                 type="password"
-                placeholder="•••••"
-                className="w-full rounded-lg border border-border bg-slate-50/50 pl-10 pr-3.5 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary"
+                placeholder="••••••"
+                className="w-full rounded-lg border border-zinc-200/80 bg-[#F0F4F9]/70 pl-10 pr-3.5 py-2.5 text-sm text-zinc-900 placeholder-zinc-400 outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary font-medium"
                 {...register('confirmPassword')}
                 aria-invalid={errors.confirmPassword ? 'true' : 'false'}
               />
@@ -182,22 +185,23 @@ export default function RegisterForm() {
           </div>
         </div>
 
+        {/* Submit */}
         <button
           type="submit"
           disabled={loading}
-          className="mt-3 flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 hover:brightness-110 active:scale-[0.98] transition-all disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+          className="mt-3 flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-primary/20 hover:brightness-115 active:scale-[0.98] transition-all disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
         >
           {loading ? (
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
           ) : (
             'Sign Up'
           )}
         </button>
       </form>
 
-      <div className="text-center text-xs text-muted-foreground">
+      <div className="text-center text-xs text-zinc-500 font-medium">
         Already have an account?{' '}
-        <Link to="/login" className="font-semibold text-primary hover:text-primary/80">
+        <Link to="/login" className="font-bold text-primary hover:brightness-110">
           Sign In
         </Link>
       </div>

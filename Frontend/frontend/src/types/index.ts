@@ -37,7 +37,7 @@ export interface Dataset {
   updatedAt: string;
 }
 
-export type WidgetType = 'kpi' | 'bar' | 'line' | 'pie' | 'area' | 'donut' | 'radar' | 'scatter' | 'gauge' | 'table';
+export type WidgetType = 'kpi' | 'bar' | 'line' | 'pie' | 'area' | 'donut' | 'radar' | 'scatter' | 'gauge' | 'table' | 'custom';
 
 export interface FilterCondition {
   column: string;
@@ -64,6 +64,17 @@ export interface WidgetVisualizationSettings {
   kpiLabel?: string;
   kpiFormat?: 'number' | 'currency' | 'percent';
   gaugeMax?: number;
+  clickAction?: 'none' | 'url' | 'alert' | 'toast';
+  clickActionValue?: string;
+  conditionalRules?: { operator: string; value: string; color: string }[];
+  cacheTTL?: number;
+  incrementalRefresh?: boolean;
+  calculatedFormula?: string;
+  calculatedAlias?: string;
+  customCode?: string;
+  showStats?: boolean;
+  forecastingEnabled?: boolean;
+  anomalyDetection?: boolean;
 }
 
 export interface WidgetLayout {

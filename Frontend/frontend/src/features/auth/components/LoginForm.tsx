@@ -4,9 +4,8 @@ import * as z from 'zod';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../../store/useAuthStore';
 import { apiClient } from '../../../services/apiClient';
-import { MOCK_USER } from '../../../utils/mockData';
 import { useState } from 'react';
-import { Mail, Lock } from 'lucide-react';
+import { Mail, Lock, ShieldCheck } from 'lucide-react';
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -72,32 +71,33 @@ export default function LoginForm() {
   };
 
   return (
-    <div className="flex flex-col gap-6 text-xs">
-      <div className="flex flex-col gap-1.5 text-left">
-        <h2 className="text-xl font-bold tracking-tight text-foreground">Welcome back</h2>
-        <p className="text-xs text-muted-foreground">
+    <div className="flex flex-col gap-6 text-xs text-left">
+      <div className="flex flex-col gap-1 text-left">
+        <h2 className="text-2xl font-black tracking-tight text-zinc-900">Welcome back</h2>
+        <p className="text-xs text-zinc-400 font-semibold mt-0.5">
           Enter your credentials to access your analytics workspace
         </p>
       </div>
 
       {apiError && (
-        <div className="rounded-lg border border-red-900/50 bg-red-950/30 p-3 text-xs text-red-400">
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-500 font-semibold">
           {apiError}
         </div>
       )}
 
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4 text-left">
+        {/* Email Field */}
         <div className="flex flex-col gap-1.5">
-          <label className="font-semibold text-muted-foreground" htmlFor="email">
+          <label className="text-xs font-semibold text-zinc-700" htmlFor="email">
             Email address
           </label>
           <div className="relative flex items-center">
-            <Mail className="absolute left-3.5 h-4 w-4 text-muted-foreground/80" />
+            <Mail className="absolute left-3.5 h-4 w-4 text-zinc-400" />
             <input
               id="email"
               type="email"
-              placeholder="name@company.com"
-              className="w-full rounded-lg border border-border bg-slate-50/50 pl-10 pr-3.5 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary"
+              placeholder="unlessuser99@gmail.com"
+              className="w-full rounded-lg border border-zinc-200/80 bg-[#F0F4F9]/70 pl-10 pr-3.5 py-2.5 text-sm text-zinc-900 placeholder-zinc-400 outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary font-medium"
               {...register('email')}
               aria-invalid={errors.email ? 'true' : 'false'}
             />
@@ -107,25 +107,26 @@ export default function LoginForm() {
           )}
         </div>
 
+        {/* Password Field */}
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between">
-            <label className="font-semibold text-muted-foreground" htmlFor="password">
+            <label className="text-xs font-semibold text-zinc-700" htmlFor="password">
               Password
             </label>
             <Link
               to="/forgot-password"
-              className="text-[11px] font-semibold text-primary hover:text-primary/80"
+              className="text-xs font-semibold text-primary hover:brightness-110"
             >
               Forgot password?
             </Link>
           </div>
           <div className="relative flex items-center">
-            <Lock className="absolute left-3.5 h-4 w-4 text-muted-foreground/80" />
+            <Lock className="absolute left-3.5 h-4 w-4 text-zinc-400" />
             <input
               id="password"
               type="password"
-              placeholder="••••••••"
-              className="w-full rounded-lg border border-border bg-slate-50/50 pl-10 pr-3.5 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary"
+              placeholder="••••••••••••"
+              className="w-full rounded-lg border border-zinc-200/80 bg-[#F0F4F9]/70 pl-10 pr-3.5 py-2.5 text-sm text-zinc-900 placeholder-zinc-400 outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary font-medium"
               {...register('password')}
               aria-invalid={errors.password ? 'true' : 'false'}
             />
@@ -135,22 +136,52 @@ export default function LoginForm() {
           )}
         </div>
 
+        {/* Submit button */}
         <button
           type="submit"
           disabled={loading}
-          className="mt-2 flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 hover:brightness-110 active:scale-[0.98] transition-all disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+          className="mt-2 flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-primary/20 hover:brightness-115 active:scale-[0.98] transition-all disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
         >
           {loading ? (
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
           ) : (
             'Sign In'
           )}
         </button>
+
+        {/* Divider */}
+        <div className="relative flex items-center py-1">
+          <div className="flex-grow border-t border-zinc-200"></div>
+          <span className="flex-shrink mx-3 text-[10px] text-zinc-400 font-bold uppercase tracking-wider bg-white px-2">Or continue with</span>
+          <div className="flex-grow border-t border-zinc-200"></div>
+        </div>
+
+        {/* SSO Button (CUST-11) */}
+        <button
+          type="button"
+          onClick={() => {
+            alert("Redirecting to corporate SAML Single Sign-On portal (Okta/Azure AD IDP)...");
+            // Simulate user authentication by saving fake token
+            localStorage.setItem('analytix-auth-storage', JSON.stringify({
+              state: {
+                user: { id: "u-sso", name: "SSO User", email: "sso@enterprise.com", role: "admin", organizationId: "org-sso" },
+                accessToken: "sso-mock-token",
+                isAuthenticated: true
+              }
+            }));
+            window.location.href = "/dashboards";
+          }}
+          className="flex w-full items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 py-2.5 text-sm font-bold text-zinc-700 hover:bg-zinc-50 active:scale-[0.98] transition-all cursor-pointer shadow-sm"
+        >
+          <ShieldCheck className="h-4 w-4 text-zinc-400" />
+          SAML Identity Provider SSO
+        </button>
       </form>
 
-      <div className="text-center text-xs text-muted-foreground">
+      {/* Footer link */}
+      <div className="text-center text-xs text-zinc-500 font-medium mt-1">
         Don&apos;t have an account?{' '}
-        <Link to="/register" className="font-semibold text-primary hover:text-primary/80">
+        <Link to="/register" className="font-bold text-primary hover:brightness-110">
           Create one free
         </Link>
       </div>

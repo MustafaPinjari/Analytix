@@ -158,6 +158,16 @@ export const router = createBrowserRouter([
     ],
   },
 
+  // Public Embed Route
+  {
+    path: 'embed/dashboards/:id',
+    element: (
+      <Suspense fallback={<ScreenSpinner />}>
+        <DashboardBuilderPage />
+      </Suspense>
+    ),
+  },
+
   // Fallback Catch-All
   {
     path: '*',
