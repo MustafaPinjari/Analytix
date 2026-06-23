@@ -171,7 +171,7 @@ export default function OrgSettingsManager() {
               </div>
               <div>
                 <p className="font-semibold text-muted-foreground">Subdomain Mapping</p>
-                <p className="font-semibold mt-0.5">cyberdyne.insightflow.com</p>
+                <p className="font-semibold mt-0.5">cyberdyne.analytix.com</p>
               </div>
               <div>
                 <p className="font-semibold text-muted-foreground">Active Admin</p>

@@ -10,6 +10,11 @@ class Widget(models.Model):
         ("PIE", "Pie Chart"),
         ("KPI", "Key Performance Indicator"),
         ("TABLE", "Data Table"),
+        ("AREA", "Area Chart"),
+        ("DONUT", "Donut Chart"),
+        ("RADAR", "Radar Chart"),
+        ("SCATTER", "Scatter Chart"),
+        ("GAUGE", "Gauge Chart"),
     )
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

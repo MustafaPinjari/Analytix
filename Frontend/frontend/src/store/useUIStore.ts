@@ -33,7 +33,7 @@ export const useUIStore = create<UIState>()(
       setLayoutDensity: (density) => set({ layoutDensity: density }),
     }),
     {
-      name: 'insightflow-ui-storage',
+      name: 'analytix-ui-storage',
       onRehydrateStorage: () => (state) => {
         // Apply theme color class to HTML element on rehydration
         if (state) {

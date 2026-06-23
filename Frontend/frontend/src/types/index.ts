@@ -37,7 +37,7 @@ export interface Dataset {
   updatedAt: string;
 }
 
-export type WidgetType = 'kpi' | 'bar' | 'line' | 'pie' | 'area' | 'table';
+export type WidgetType = 'kpi' | 'bar' | 'line' | 'pie' | 'area' | 'donut' | 'radar' | 'scatter' | 'gauge' | 'table';
 
 export interface FilterCondition {
   column: string;
@@ -63,6 +63,7 @@ export interface WidgetVisualizationSettings {
   yAxisFormatter?: 'number' | 'currency' | 'percent' | 'short';
   kpiLabel?: string;
   kpiFormat?: 'number' | 'currency' | 'percent';
+  gaugeMax?: number;
 }
 
 export interface WidgetLayout {

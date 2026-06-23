@@ -21,7 +21,7 @@ class WidgetSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         )
-        read_only_fields = ("id", "created_at", "updated_at")
+        read_only_fields = ("id", "dashboard", "created_at", "updated_at")
 
     def validate_query_config(self, value):
         if not isinstance(value, dict):
@@ -32,10 +32,12 @@ class WidgetSerializer(serializers.ModelSerializer):
         
         if not (has_measures or has_metrics):
             raise serializers.ValidationError("query_config must contain a 'measures' or 'metrics' list with at least one aggregate.")
-        return value
+        return json.dumps(value)
 
     def to_representation(self, instance):
         ret = super().to_representation(instance)
+        if "type" in ret and isinstance(ret["type"], str):
+            ret["type"] = ret["type"].lower()
         if isinstance(instance.query_config, str):
             try:
                 ret["query_config"] = json.loads(instance.query_config)
@@ -44,7 +46,9 @@ class WidgetSerializer(serializers.ModelSerializer):
         return ret
 
     def to_internal_value(self, data):
+        if "type" in data and isinstance(data["type"], str):
+            data = data.copy()
+            data["type"] = data["type"].upper()
+            
         ret = super().to_internal_value(data)
-        if "query_config" in ret:
-            ret["query_config"] = json.dumps(ret["query_config"])
         return ret

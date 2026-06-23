@@ -38,7 +38,7 @@ def compile_report_task(report_id: str):
             wb = Workbook()
             ws = wb.active
             ws.title = "Report Details"
-            ws["A1"] = "InsightFlow BI Scheduled Report"
+            ws["A1"] = "Analytix BI Scheduled Report"
             ws["A2"] = f"Report Name: {report.name}"
             ws["A3"] = f"Format: {report.format}"
             ws["A4"] = f"Dashboard Reference ID: {report.dashboard_id}"
@@ -48,14 +48,14 @@ def compile_report_task(report_id: str):
             filename = f"{filename}.pdf"
             file_path = os.path.join(reports_dir, filename)
             with open(file_path, "w") as f:
-                f.write(f"InsightFlow BI PDF Report\nName: {report.name}\nDashboard ID: {report.dashboard_id}\n")
+                f.write(f"Analytix BI PDF Report\nName: {report.name}\nDashboard ID: {report.dashboard_id}\n")
 
         recipients_list = json.loads(report.recipients)
 
         email = EmailMessage(
-            subject=f"InsightFlow BI Scheduled Report: {report.name}",
-            body=f"Hello,\n\nPlease find attached the scheduled report: {report.name}.\n\nBest regards,\nInsightFlow BI Team",
-            from_email="reports@insightflow.bi",
+            subject=f"Analytix BI Scheduled Report: {report.name}",
+            body=f"Hello,\n\nPlease find attached the scheduled report: {report.name}.\n\nBest regards,\nAnalytix BI Team",
+            from_email="reports@analytix.bi",
             to=recipients_list
         )
         email.attach_file(file_path)

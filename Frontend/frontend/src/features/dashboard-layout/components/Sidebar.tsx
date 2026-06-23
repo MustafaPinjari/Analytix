@@ -45,15 +45,15 @@ export default function Sidebar() {
       )}
     >
       {/* Brand Section */}
-      <div className="flex h-16 items-center gap-2.5 border-b border-border px-4 font-bold">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-tr from-violet-600 to-indigo-500 shadow-md shadow-violet-500/10">
-          <TrendingUp className="h-4.5 w-4.5 text-white" />
-        </div>
-        {!sidebarCollapsed && (
-          <span className="text-md tracking-tight font-extrabold text-foreground animate-fade-in-up">
-            InsightFlow <span className="bg-gradient-to-r from-violet-500 to-indigo-500 bg-clip-text text-transparent">BI</span>
-          </span>
-        )}
+      <div className="flex h-16 items-center gap-2.5 border-b border-border px-4 font-bold overflow-hidden">
+        <Link to="/dashboards" className="flex items-center gap-2.5 w-full">
+          <img src="/Analytix_logo.png" alt="Analytix Logo" className="h-8 w-8 shrink-0 object-contain rounded-md" />
+          {!sidebarCollapsed && (
+            <span className="text-md tracking-tight font-extrabold text-foreground animate-fade-in-up">
+              Analytix <span className="bg-gradient-to-r from-amber-500 to-yellow-500 bg-clip-text text-transparent">BI</span>
+            </span>
+          )}
+        </Link>
       </div>
 
       {/* Nav Links Section */}

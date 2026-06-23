@@ -6,6 +6,7 @@ import { useAuthStore } from '../../../store/useAuthStore';
 import { apiClient } from '../../../services/apiClient';
 import { MOCK_USER } from '../../../utils/mockData';
 import { useState } from 'react';
+import { Mail, Lock } from 'lucide-react';
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -71,10 +72,10 @@ export default function LoginForm() {
   };
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6 text-xs">
       <div className="flex flex-col gap-1.5 text-left">
-        <h2 className="text-xl font-bold tracking-tight text-white">Welcome back</h2>
-        <p className="text-xs text-zinc-400">
+        <h2 className="text-xl font-bold tracking-tight text-foreground">Welcome back</h2>
+        <p className="text-xs text-muted-foreground">
           Enter your credentials to access your analytics workspace
         </p>
       </div>
@@ -87,63 +88,69 @@ export default function LoginForm() {
 
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4 text-left">
         <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-semibold text-zinc-300" htmlFor="email">
+          <label className="font-semibold text-muted-foreground" htmlFor="email">
             Email address
           </label>
-          <input
-            id="email"
-            type="email"
-            placeholder="name@company.com"
-            className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3.5 py-2 text-sm text-white placeholder-zinc-500 outline-none transition-all focus:border-violet-600 focus:ring-1 focus:ring-violet-600"
-            {...register('email')}
-            aria-invalid={errors.email ? 'true' : 'false'}
-          />
+          <div className="relative flex items-center">
+            <Mail className="absolute left-3.5 h-4 w-4 text-muted-foreground/80" />
+            <input
+              id="email"
+              type="email"
+              placeholder="name@company.com"
+              className="w-full rounded-lg border border-border bg-slate-50/50 pl-10 pr-3.5 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary"
+              {...register('email')}
+              aria-invalid={errors.email ? 'true' : 'false'}
+            />
+          </div>
           {errors.email && (
-            <span className="text-[11px] text-red-400">{errors.email.message}</span>
+            <span className="text-[11px] text-red-500 font-semibold">{errors.email.message}</span>
           )}
         </div>
 
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between">
-            <label className="text-xs font-semibold text-zinc-300" htmlFor="password">
+            <label className="font-semibold text-muted-foreground" htmlFor="password">
               Password
             </label>
             <Link
               to="/forgot-password"
-              className="text-[11px] text-violet-400 hover:text-violet-300"
+              className="text-[11px] font-semibold text-primary hover:text-primary/80"
             >
               Forgot password?
             </Link>
           </div>
-          <input
-            id="password"
-            type="password"
-            placeholder="••••••••"
-            className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3.5 py-2 text-sm text-white placeholder-zinc-500 outline-none transition-all focus:border-violet-600 focus:ring-1 focus:ring-violet-600"
-            {...register('password')}
-            aria-invalid={errors.password ? 'true' : 'false'}
-          />
+          <div className="relative flex items-center">
+            <Lock className="absolute left-3.5 h-4 w-4 text-muted-foreground/80" />
+            <input
+              id="password"
+              type="password"
+              placeholder="••••••••"
+              className="w-full rounded-lg border border-border bg-slate-50/50 pl-10 pr-3.5 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary"
+              {...register('password')}
+              aria-invalid={errors.password ? 'true' : 'false'}
+            />
+          </div>
           {errors.password && (
-            <span className="text-[11px] text-red-400">{errors.password.message}</span>
+            <span className="text-[11px] text-red-500 font-semibold">{errors.password.message}</span>
           )}
         </div>
 
         <button
           type="submit"
           disabled={loading}
-          className="mt-2 flex w-full items-center justify-center rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg transition-all hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+          className="mt-2 flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 hover:brightness-110 active:scale-[0.98] transition-all disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
         >
           {loading ? (
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
           ) : (
             'Sign In'
           )}
         </button>
       </form>
 
-      <div className="text-center text-xs text-zinc-400">
+      <div className="text-center text-xs text-muted-foreground">
         Don&apos;t have an account?{' '}
-        <Link to="/register" className="font-semibold text-violet-400 hover:text-violet-300">
+        <Link to="/register" className="font-semibold text-primary hover:text-primary/80">
           Create one free
         </Link>
       </div>

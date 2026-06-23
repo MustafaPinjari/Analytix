@@ -14,12 +14,36 @@ import {
   X,
   Copy,
   UserPlus,
+  Hash,
+  BarChart3,
+  LineChart,
+  AreaChart,
+  PieChart,
+  Donut,
+  Compass,
+  ScatterChart as ScatterIcon,
+  Gauge,
+  Table,
+  FileDown,
 } from 'lucide-react';
 // @ts-ignore
 import RGL from 'react-grid-layout';
 const GridCanvas: any = RGL;
 import WidgetRenderer from '../../widgets/components/WidgetRenderer';
 import { cn } from '../../../utils';
+
+const WIDGET_ICONS: Record<string, any> = {
+  kpi: Hash,
+  bar: BarChart3,
+  line: LineChart,
+  area: AreaChart,
+  pie: PieChart,
+  donut: Donut,
+  radar: Compass,
+  scatter: ScatterIcon,
+  gauge: Gauge,
+  table: Table,
+};
 
 // Custom Resize Observer HOC to avoid buggy exports in react-grid-layout
 function ResponsiveWidthWrapper({ children }: { children: (width: number) => React.ReactNode }) {
@@ -47,6 +71,7 @@ function ResponsiveWidthWrapper({ children }: { children: (width: number) => Rea
 export default function DashboardBuilder() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const dashboardRef = useRef<HTMLDivElement>(null);
   
   // Dashboard workspace states
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
@@ -185,10 +210,14 @@ export default function DashboardBuilder() {
       
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 2000);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error saving dashboard configuration:', err);
       setSaveStatus('idle');
-      alert('Failed to save dashboard. Please ensure you have configured a valid dataset for all widgets.');
+      const errorDetail = err.response?.data?.detail || 
+                          err.response?.data?.message || 
+                          (err.response?.data ? JSON.stringify(err.response.data) : '') ||
+                          err.message;
+      alert(`Failed to save dashboard. Error details: ${errorDetail}`);
     }
   };
 
@@ -340,6 +369,35 @@ export default function DashboardBuilder() {
     });
   };
 
+  // Handle PDF Export
+  const handleExportPDF = async () => {
+    if (!dashboardRef.current || !dashboard) return;
+    try {
+      const { default: html2canvas } = await import('html2canvas-pro');
+      const { default: jsPDF } = await import('jspdf');
+
+      const element = dashboardRef.current;
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: document.documentElement.classList.contains('dark') ? '#0c0a09' : '#fafaf9',
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      const imgWidth = 297;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+      const pdf = new jsPDF('p', 'mm', [imgWidth, imgHeight]);
+      pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+      
+      pdf.save(`${dashboard.name.toLowerCase().replace(/\s+/g, '-')}-dashboard.pdf`);
+    } catch (err: any) {
+      console.error('Error exporting PDF:', err);
+      alert(`Failed to generate PDF export. Error details: ${err.message || String(err)}`);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-6 text-left relative min-h-screen">
       {/* 1. BUILDER TOPBAR CONTROL HEADER */}
@@ -398,6 +456,15 @@ export default function DashboardBuilder() {
             </button>
           </div>
 
+          {/* Export PDF Button */}
+          <button
+            onClick={handleExportPDF}
+            className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3.5 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors"
+          >
+            <FileDown className="h-3.5 w-3.5" />
+            Export PDF
+          </button>
+
           {/* Share Modal Trigger */}
           <button
             onClick={() => setSharingModalOpen(true)}
@@ -430,24 +497,27 @@ export default function DashboardBuilder() {
             </div>
             
             <div className="grid grid-cols-2 lg:grid-cols-1 gap-2">
-              {(['kpi', 'bar', 'line', 'area', 'pie', 'table'] as WidgetType[]).map((type) => (
-                <button
-                  key={type}
-                  onClick={() => handleAddWidget(type)}
-                  className="flex items-center gap-2.5 rounded-lg border border-border bg-background p-2.5 text-xs text-left font-semibold hover:border-primary/50 hover:bg-primary/5 transition-all text-foreground cursor-pointer group"
-                >
-                  <div className="flex h-7 w-7 items-center justify-center rounded bg-primary/10 text-primary border border-primary/10 group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
-                    <LayoutGrid className="h-4 w-4" />
-                  </div>
-                  <span className="capitalize">{type === 'kpi' ? 'KPI Card' : `${type} Chart`}</span>
-                </button>
-              ))}
+              {(['kpi', 'bar', 'line', 'area', 'pie', 'donut', 'radar', 'scatter', 'gauge', 'table'] as WidgetType[]).map((type) => {
+                const IconComponent = WIDGET_ICONS[type] || LayoutGrid;
+                return (
+                  <button
+                    key={type}
+                    onClick={() => handleAddWidget(type)}
+                    className="flex items-center gap-2.5 rounded-lg border border-border bg-background p-2.5 text-xs text-left font-semibold hover:border-primary/50 hover:bg-primary/5 transition-all text-foreground cursor-pointer group"
+                  >
+                    <div className="flex h-7 w-7 items-center justify-center rounded bg-primary/10 text-primary border border-primary/10 group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                      <IconComponent className="h-4 w-4" />
+                    </div>
+                    <span className="capitalize">{type === 'kpi' ? 'KPI Card' : type === 'table' ? 'Data Table' : `${type} Chart`}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
 
         {/* Center Grid Area */}
-        <div className="flex-1 w-full rounded-2xl border border-border bg-background/50 backdrop-blur-xs p-4 min-h-[500px]">
+        <div ref={dashboardRef} className="flex-1 w-full rounded-2xl border border-border bg-background/50 backdrop-blur-xs p-4 min-h-[500px]">
           {dashboard.widgets.length === 0 ? (
             <div className="flex flex-col items-center justify-center p-12 text-center h-[420px]">
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground mb-4">
@@ -489,6 +559,10 @@ export default function DashboardBuilder() {
                           )}
                         >
                           {isEditMode && <span className="text-muted-foreground select-none">⠿</span>}
+                          {(() => {
+                            const CardIcon = WIDGET_ICONS[widget.type] || LayoutGrid;
+                            return <CardIcon className="h-3.5 w-3.5 text-primary shrink-0" />;
+                          })()}
                           <span>{widget.title}</span>
                         </div>
 
@@ -715,6 +789,23 @@ export default function DashboardBuilder() {
                         />
                         Stacked aggregation display
                       </label>
+                    )}
+                    {selectedWidget.type === 'gauge' && (
+                      <div className="flex flex-col gap-1.5 mb-2.5">
+                        <label className="font-semibold text-muted-foreground">Gauge Max Limit</label>
+                        <input
+                          type="number"
+                          value={selectedWidget.visualizationSettings.gaugeMax || 100}
+                          onChange={(e) => handleUpdateWidget({
+                            ...selectedWidget,
+                            visualizationSettings: {
+                              ...selectedWidget.visualizationSettings,
+                              gaugeMax: Number(e.target.value) || 100
+                            }
+                          })}
+                          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                        />
+                      </div>
                     )}
                     <label className="flex items-center gap-2 cursor-pointer font-semibold">
                       <input

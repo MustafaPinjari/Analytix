@@ -2,7 +2,7 @@
 
 > A Modern Business Intelligence & Analytics Platform Built with Django and React
 
-![Analytix Banner](Frontend\static\img\banner.png)
+![Analytix Banner](Frontend/static/img/banner.png)
 
 ## Overview
 
