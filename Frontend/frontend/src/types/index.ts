@@ -32,9 +32,26 @@ export interface Dataset {
   description?: string;
   columns: DatasetColumn[];
   rowCount: number;
-  connectionType: 'postgresql' | 'mysql' | 'snowflake' | 'csv' | 'bigquery';
+  connectionType: 'postgresql' | 'mysql' | 'snowflake' | 'csv' | 'bigquery' | 'sqlite' | 'gsheets';
+  db_connection?: string;
+  sql_query?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface DatabaseConnection {
+  id: string;
+  name: string;
+  connection_type: 'postgresql' | 'mysql' | 'sqlite' | 'bigquery' | 'gsheets';
+  host?: string;
+  port?: number;
+  database_name?: string;
+  username?: string;
+  password?: string;
+  credentials_json?: string;
+  spreadsheet_url?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export type WidgetType = 'kpi' | 'bar' | 'line' | 'pie' | 'area' | 'donut' | 'radar' | 'scatter' | 'gauge' | 'table' | 'custom';

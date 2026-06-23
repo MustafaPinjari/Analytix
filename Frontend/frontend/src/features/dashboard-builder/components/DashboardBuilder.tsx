@@ -57,6 +57,7 @@ const GridCanvas: any = RGL;
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, PieChart, Pie, CartesianGrid, XAxis, YAxis, Tooltip } from 'recharts';
 import WidgetRenderer from '../../widgets/components/WidgetRenderer';
 import { useUIStore } from '../../../store/useUIStore';
+import { useAuthStore } from '../../../store/useAuthStore';
 import { cn } from '../../../utils';
 
 const Slack = (props: any) => (
@@ -298,7 +299,127 @@ export default function DashboardBuilder() {
   const [shareRole, setShareRole] = useState<'editor' | 'viewer'>('viewer');
   const [copiedLink, setCopiedLink] = useState(false);
 
+
+  // Collaborative workspace states & effects
+  const user = useAuthStore((state) => state.user);
+  const socketRef = useRef<WebSocket | null>(null);
+  const [collaborators, setCollaborators] = useState<any[]>([]);
+  const lastCursorSent = useRef<number>(0);
+
+  useEffect(() => {
+    if (!id || !user) return;
+
+    const baseApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+    const cleanBase = baseApiUrl.replace('/api/v1', '');
+    const wsProtocol = cleanBase.startsWith('https') ? 'wss:' : 'ws:';
+    const wsHost = cleanBase.replace(/^https?:\/\//, '');
+    const wsUrl = `${wsProtocol}//${wsHost}/ws/dashboards/${id}/`;
+
+    const socket = new WebSocket(wsUrl);
+    socketRef.current = socket;
+
+    socket.onopen = () => {
+      console.log('Dashboard WebSocket connection established.');
+      socket.send(JSON.stringify({
+        type: 'presence',
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role
+        },
+        activePage: activeTab,
+        isInitial: true
+      }));
+    };
+
+    socket.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        if (!payload || payload.sender === user.id) return;
+
+        if (payload.type === 'presence') {
+          setCollaborators((prev) => {
+            const exists = prev.some((c) => c.id === payload.user.id);
+            if (exists) {
+              return prev.map((c) => c.id === payload.user.id ? { ...c, ...payload } : c);
+            }
+            const colors = ['bg-red-500', 'bg-blue-500', 'bg-green-500', 'bg-yellow-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500'];
+            const color = colors[Math.floor(Math.random() * colors.length)];
+            return [...prev, { ...payload.user, color, cursor: payload.cursor, activePage: payload.activePage }];
+          });
+
+          if (payload.isInitial) {
+            socket.send(JSON.stringify({
+              type: 'presence',
+              user: {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                role: user.role
+              },
+              activePage: activeTab,
+              isInitial: false
+            }));
+          }
+        } else if (payload.type === 'cursor_move') {
+          setCollaborators((prev) =>
+            prev.map((c) => c.id === payload.userId ? { ...c, cursor: payload.cursor } : c)
+          );
+        } else if (payload.type === 'canvas_update') {
+          setDashboard((prev) => {
+            if (!prev) return null;
+            return { ...prev, widgets: payload.widgets };
+          });
+        }
+      } catch (err) {
+        console.error('Error handling WebSocket message:', err);
+      }
+    };
+
+    socket.onclose = () => {
+      console.log('Dashboard WebSocket connection closed.');
+    };
+
+    return () => {
+      socket.close();
+    };
+  }, [id, user]);
+
+  useEffect(() => {
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN && user) {
+      socketRef.current.send(JSON.stringify({
+        type: 'presence',
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role
+        },
+        activePage: activeTab
+      }));
+    }
+  }, [activeTab, user]);
+
+  const handleCanvasMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN || !user || !dashboardRef.current) return;
+    const now = Date.now();
+    if (now - lastCursorSent.current < 100) return;
+    lastCursorSent.current = now;
+
+    const bounds = dashboardRef.current.getBoundingClientRect();
+    const x = ((e.clientX - bounds.left) / bounds.width) * 100;
+    const y = ((e.clientY - bounds.top) / bounds.height) * 100;
+
+    socketRef.current.send(JSON.stringify({
+      type: 'cursor_move',
+      userId: user.id,
+      cursor: { x, y }
+    }));
+  };
+
   // CUST states & listeners
+
   const isEmbed = window.location.pathname.startsWith('/embed/');
   const [embedPasscodeEntered, setEmbedPasscodeEntered] = useState('');
   const [isPasscodeVerified, setIsPasscodeVerified] = useState(false);
@@ -792,6 +913,14 @@ print(df.head())`;
         }
         return widget;
       });
+
+      if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+        socketRef.current.send(JSON.stringify({
+          type: 'canvas_update',
+          widgets: updatedWidgets
+        }));
+      }
+
       return { ...prev, widgets: updatedWidgets };
     });
   };
@@ -1269,7 +1398,29 @@ print(df.head())`;
             Pandas Script
           </button>
 
+          {/* Active Collaborators list bubbles */}
+          {collaborators.length > 0 && (
+            <div className="flex items-center gap-1.5 mr-2">
+              <span className="text-[10px] text-muted-foreground mr-1">Collaborating:</span>
+              <div className="flex -space-x-1.5 overflow-hidden">
+                {collaborators.map((c) => (
+                  <div
+                    key={c.id}
+                    title={`${c.name} (${c.email}) - ${c.activePage || 'Page 1'}`}
+                    className={cn(
+                      "inline-block h-6 w-6 rounded-full ring-2 ring-background flex items-center justify-center text-[10px] font-bold text-white uppercase shadow-sm cursor-help",
+                      c.color
+                    )}
+                  >
+                    {c.name.substring(0, 2)}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="flex rounded-lg border border-border bg-card p-1">
+
             <button
               onClick={() => {
                 setIsEditMode(false);
@@ -1778,8 +1929,38 @@ print(df.head())`;
         )}
 
         {/* Center Grid Area */}
-        <div ref={dashboardRef} className="flex-1 w-full rounded-2xl border border-border bg-background/50 backdrop-blur-xs p-4 min-h-[500px] relative overflow-hidden">
+        <div ref={dashboardRef} onMouseMove={handleCanvasMouseMove} className="flex-1 w-full rounded-2xl border border-border bg-background/50 backdrop-blur-xs p-4 min-h-[500px] relative overflow-hidden">
           
+          {/* Floating cursors overlay */}
+          {collaborators.map((c) => {
+            if (!c.cursor || c.activePage !== activeTab) return null;
+            return (
+              <div
+                key={c.id}
+                className="absolute pointer-events-none z-50 transition-all duration-75"
+                style={{
+                  left: `${c.cursor.x}%`,
+                  top: `${c.cursor.y}%`,
+                  transform: 'translate(-5px, -5px)'
+                }}
+              >
+                <svg
+                  className="h-4 w-4 drop-shadow-md text-slate-100"
+                  fill="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path d="M7 2v16l4-4 3 6 3-1-3-6 5-1z" />
+                </svg>
+                <span className={cn(
+                  "absolute left-3.5 top-3 px-1.5 py-0.5 rounded text-[8px] font-bold text-white shadow truncate max-w-24 border border-white/10",
+                  c.color
+                )}>
+                  {c.name}
+                </span>
+              </div>
+            );
+          })}
+
           {isEditMode && showGridGuides && (
             <div className="absolute inset-0 grid grid-cols-12 gap-[10px] pointer-events-none opacity-20 px-4 py-4 z-0">
               {Array.from({ length: 12 }).map((_, i) => (

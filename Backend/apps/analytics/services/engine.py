@@ -8,17 +8,19 @@ logger = logging.getLogger(__name__)
 class AnalyticsEngine:
     def execute_query(
         self,
-        file_path: str,
-        dimensions: List[str],
-        measures: List[Dict[str, str]],
-        filters: List[Dict[str, Any]]
+        file_path: str = None,
+        df: pd.DataFrame = None,
+        dimensions: List[str] = [],
+        measures: List[Dict[str, str]] = [],
+        filters: List[Dict[str, Any]] = []
     ) -> List[Dict[str, Any]]:
-        try:
-            # Load Parquet file efficiently
-            df = pd.read_parquet(file_path)
-        except Exception as e:
-            logger.error(f"Failed to read parquet data store: {str(e)}")
-            raise ValidationException(f"Error loading dataset storage: {str(e)}")
+        if df is None:
+            try:
+                # Load Parquet file efficiently
+                df = pd.read_parquet(file_path)
+            except Exception as e:
+                logger.error(f"Failed to read parquet data store: {str(e)}")
+                raise ValidationException(f"Error loading dataset storage: {str(e)}")
 
         # 1. Apply Filters
         for f in filters:
