@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import html2canvas from 'html2canvas';
+import html2canvas from 'html2canvas-pro';
 import { jsPDF } from 'jspdf';
 import { apiClient } from '../../../services/apiClient';
 import { Dashboard, Widget, WidgetType, Dataset, DataPoint } from '../../../types';
@@ -49,7 +49,10 @@ import {
   RefreshCw,
   User,
   AlertTriangle,
-  Lock
+  Lock,
+  Monitor,
+  Smartphone,
+  Tablet as TabletIcon
 } from 'lucide-react';
 // @ts-ignore
 import RGL from 'react-grid-layout';
@@ -232,6 +235,11 @@ export default function DashboardBuilder() {
   const [layoutHistory, setLayoutHistory] = useState<{ timestamp: string; label: string; widgets: Widget[] }[]>([]);
   const [snapshotLabel, setSnapshotLabel] = useState('');
 
+  // PBI-19 & PBI-20 Responsive viewports and Widget Audit Logs states
+  const [activeViewportSize, setActiveViewportSize] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
+  const [responsiveLayouts, setResponsiveLayouts] = useState<Record<'tablet' | 'mobile', Record<string, WidgetLayout>>>({ tablet: {}, mobile: {} });
+  const [widgetAuditLogs, setWidgetAuditLogs] = useState<{ id: string; timestamp: string; action: 'CREATE' | 'UPDATE' | 'DELETE' | 'THEME'; summary: string; user: string; snapshot: Widget[] }[]>([]);
+
   // PBI-8: Global Dashboard parameters
   const [globalParameters, setGlobalParameters] = useState<{ name: string; value: string }[]>([
     { name: 'TargetQuota', value: '10000' },
@@ -311,7 +319,7 @@ export default function DashboardBuilder() {
   const [privacyModalOpen, setPrivacyModalOpen] = useState(false);
 
   // Developer Control panel tabs
-  const [sidebarTab, setSidebarTab] = useState<'widgets' | 'layers' | 'relationships' | 'history' | 'profiler'>('widgets');
+  const [sidebarTab, setSidebarTab] = useState<'widgets' | 'layers' | 'relationships' | 'history' | 'profiler' | 'audit'>('widgets');
 
   // Sharing states
   const [shareEmail, setShareEmail] = useState('');
@@ -920,6 +928,28 @@ print(df.head())`;
 
   const handleLayoutChange = (layout: any[]) => {
     if (!isEditMode) return;
+
+    if (activeViewportSize !== 'desktop') {
+      // PBI-19: Save responsive layout override for the active simulated breakpoint
+      setResponsiveLayouts((prev) => {
+        const currentBreakpointLayouts = { ...prev[activeViewportSize] };
+        layout.forEach((item) => {
+          currentBreakpointLayouts[item.i] = {
+            i: item.i,
+            x: item.x,
+            y: item.y,
+            w: item.w,
+            h: item.h,
+          };
+        });
+        return {
+          ...prev,
+          [activeViewportSize]: currentBreakpointLayouts,
+        };
+      });
+      return;
+    }
+
     setDashboard((prev) => {
       if (!prev) return null;
       const updatedWidgets = prev.widgets.map((widget) => {
@@ -990,6 +1020,18 @@ print(df.head())`;
     // @ts-ignore
     newWidget.queryConfig.assignedTab = activeTab;
 
+    setWidgetAuditLogs((prevLogs) => [
+      {
+        id: `audit-${Date.now()}`,
+        timestamp: new Date().toLocaleTimeString(),
+        action: 'CREATE',
+        summary: `Created ${type.toUpperCase()} widget "${newWidget.title}"`,
+        user: user?.name || 'Mustafa Pinjari',
+        snapshot: JSON.parse(JSON.stringify(dashboard?.widgets || []))
+      },
+      ...prevLogs
+    ]);
+
     setDashboard((prev) => {
       if (!prev) return null;
       return { ...prev, widgets: [...prev.widgets, newWidget] };
@@ -1001,6 +1043,19 @@ print(df.head())`;
 
   const handleDeleteWidget = async (widgetId: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    const targetWidget = dashboard?.widgets.find((w) => w.id === widgetId);
+    setWidgetAuditLogs((prevLogs) => [
+      {
+        id: `audit-${Date.now()}`,
+        timestamp: new Date().toLocaleTimeString(),
+        action: 'DELETE',
+        summary: `Deleted widget "${targetWidget?.title || widgetId}"`,
+        user: user?.name || 'Mustafa Pinjari',
+        snapshot: JSON.parse(JSON.stringify(dashboard?.widgets || []))
+      },
+      ...prevLogs
+    ]);
+
     setDashboard((prev) => {
       if (!prev) return null;
       return { ...prev, widgets: prev.widgets.filter((w) => w.id !== widgetId) };
@@ -1025,6 +1080,18 @@ print(df.head())`;
   };
 
   const handleUpdateWidget = (updated: Widget) => {
+    setWidgetAuditLogs((prevLogs) => [
+      {
+        id: `audit-${Date.now()}`,
+        timestamp: new Date().toLocaleTimeString(),
+        action: 'UPDATE',
+        summary: `Updated widget "${updated.title}" config settings`,
+        user: user?.name || 'Mustafa Pinjari',
+        snapshot: JSON.parse(JSON.stringify(dashboard?.widgets || []))
+      },
+      ...prevLogs
+    ]);
+
     setDashboard((prev) => {
       if (!prev) return null;
       return { ...prev, widgets: prev.widgets.map((w) => (w.id === updated.id ? updated : w)) };
@@ -1033,6 +1100,18 @@ print(df.head())`;
   };
 
   const handleThemeChange = (themeKey: 'yellow' | 'slate' | 'indigo' | 'emerald') => {
+    setWidgetAuditLogs((prevLogs) => [
+      {
+        id: `audit-${Date.now()}`,
+        timestamp: new Date().toLocaleTimeString(),
+        action: 'THEME',
+        summary: `Changed global dashboard theme to "${themeKey.toUpperCase()}"`,
+        user: user?.name || 'Mustafa Pinjari',
+        snapshot: JSON.parse(JSON.stringify(dashboard?.widgets || []))
+      },
+      ...prevLogs
+    ]);
+
     setThemeName(themeKey);
     const cols = THEME_PALETTES[themeKey];
     setCustomColors(cols);
@@ -1465,6 +1544,40 @@ print(df.head())`;
             </button>
           </div>
 
+          {/* PBI-19 Viewport Breakpoint simulation toggles */}
+          <div className="flex rounded-lg border border-border bg-card p-1">
+            <button
+              onClick={() => setActiveViewportSize('desktop')}
+              className={cn(
+                'rounded-md p-1.5 transition-all text-xs font-semibold flex items-center gap-1',
+                activeViewportSize === 'desktop' ? 'bg-primary text-primary-foreground shadow' : 'text-muted-foreground hover:text-foreground'
+              )}
+              title="Desktop View (1200px)"
+            >
+              <Monitor className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() => setActiveViewportSize('tablet')}
+              className={cn(
+                'rounded-md p-1.5 transition-all text-xs font-semibold flex items-center gap-1',
+                activeViewportSize === 'tablet' ? 'bg-primary text-primary-foreground shadow' : 'text-muted-foreground hover:text-foreground'
+              )}
+              title="Tablet View (768px)"
+            >
+              <TabletIcon className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() => setActiveViewportSize('mobile')}
+              className={cn(
+                'rounded-md p-1.5 transition-all text-xs font-semibold flex items-center gap-1',
+                activeViewportSize === 'mobile' ? 'bg-primary text-primary-foreground shadow' : 'text-muted-foreground hover:text-foreground'
+              )}
+              title="Mobile View (380px)"
+            >
+              <Smartphone className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
           <button
             onClick={() => {
               setStoryDrawerType('dashboard');
@@ -1673,7 +1786,7 @@ print(df.head())`;
             
             {/* Sidebar Tab Header */}
             <div className="flex border-b border-border pb-2 gap-1 overflow-x-auto">
-              {(['widgets', 'layers', 'relationships', 'history', 'profiler'] as const).map((tab) => (
+              {(['widgets', 'layers', 'relationships', 'history', 'profiler', 'audit'] as const).map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setSidebarTab(tab)}
@@ -1956,11 +2069,77 @@ print(df.head())`;
               </div>
             )}
 
+            {/* TAB CONTENT: WIDGET CONFIGURATION AUDIT LOGS */}
+            {sidebarTab === 'audit' && (
+              <div className="space-y-4 text-left">
+                <div>
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">Configuration Audit Logs</h3>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Timeline of recent canvas and widget actions.</p>
+                </div>
+
+                <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
+                  {widgetAuditLogs.length === 0 ? (
+                    <div className="text-center py-6 text-muted-foreground text-[10px]">
+                      No audit transactions recorded yet. Modify the canvas to generate entries.
+                    </div>
+                  ) : (
+                    widgetAuditLogs.map((log) => {
+                      let badgeColor = "bg-zinc-800 text-zinc-300";
+                      if (log.action === "CREATE") badgeColor = "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20";
+                      if (log.action === "DELETE") badgeColor = "bg-rose-500/10 text-rose-500 border border-rose-500/20";
+                      if (log.action === "UPDATE") badgeColor = "bg-blue-500/10 text-blue-500 border border-blue-500/20";
+                      if (log.action === "THEME") badgeColor = "bg-purple-500/10 text-purple-500 border border-purple-500/20";
+
+                      return (
+                        <div key={log.id} className="bg-muted/20 border border-border/40 p-3 rounded-xl text-[10px] space-y-2 hover:border-border transition-all">
+                          <div className="flex justify-between items-center">
+                            <span className={cn("px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-widest", badgeColor)}>
+                              {log.action}
+                            </span>
+                            <span className="text-[9px] text-muted-foreground font-mono">{log.timestamp}</span>
+                          </div>
+                          
+                          <p className="text-zinc-200 leading-normal font-semibold">
+                            {log.summary}
+                          </p>
+                          
+                          <div className="flex items-center justify-between border-t border-border/30 pt-2 text-[9px] text-muted-foreground">
+                            <span>By: <strong>{log.user}</strong></span>
+                            <button
+                              onClick={() => {
+                                setDashboard((prev) => {
+                                  if (!prev) return null;
+                                  return { ...prev, widgets: JSON.parse(JSON.stringify(log.snapshot)) };
+                                });
+                                alert("Rollback successful! Restored widget layout configurations from checkout snapshot.");
+                              }}
+                              className="text-primary hover:underline font-bold"
+                            >
+                              Rollback
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
+
           </div>
         )}
 
         {/* Center Grid Area */}
-        <div ref={dashboardRef} onMouseMove={handleCanvasMouseMove} className="flex-1 w-full rounded-2xl border border-border bg-background/50 backdrop-blur-xs p-4 min-h-[500px] relative overflow-hidden">
+        <div 
+          ref={dashboardRef} 
+          onMouseMove={handleCanvasMouseMove} 
+          className={cn(
+            "rounded-2xl border border-border bg-background/50 backdrop-blur-xs p-4 min-h-[500px] relative overflow-hidden transition-all duration-300 mx-auto shadow-2xl",
+            activeViewportSize === 'desktop' ? 'flex-1 w-full' : '',
+            activeViewportSize === 'tablet' ? 'w-[768px] border-amber-500/25' : '',
+            activeViewportSize === 'mobile' ? 'w-[380px] border-amber-500/25' : ''
+          )}
+        >
           
           {/* Floating cursors overlay */}
           {collaborators.map((c) => {
@@ -2012,7 +2191,27 @@ print(df.head())`;
               {(width) => (
                 <GridCanvas
                   className="layout relative z-10"
-                  layout={activeTabWidgets.map((w) => w.layout)}
+                  layout={activeTabWidgets.map((w) => {
+                    if (activeViewportSize === 'tablet') {
+                      const override = responsiveLayouts.tablet[w.id];
+                      if (override) return override;
+                      return {
+                        ...w.layout,
+                        w: Math.max(3, Math.round(w.layout.w * 0.7)),
+                        x: Math.max(0, Math.round(w.layout.x * 0.7)),
+                      };
+                    }
+                    if (activeViewportSize === 'mobile') {
+                      const override = responsiveLayouts.mobile[w.id];
+                      if (override) return override;
+                      return {
+                        ...w.layout,
+                        w: 12,
+                        x: 0,
+                      };
+                    }
+                    return w.layout;
+                  })}
                   cols={12}
                   rowHeight={rowHeight}
                   margin={[margin, margin]}

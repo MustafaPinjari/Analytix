@@ -117,17 +117,31 @@ This document maps out the implementation and fulfillment details for the user s
   - Built **Canvas Layers** panel in the designer sidebar.
   - Displays list of widgets, highlights corresponding cards on hover, and allows developers to change layout sorting using up/down arrow buttons.
 
-### PBI-19: Save Widget as Template Preset
+### PBI-17: Reusable Widget Library Presets
 * **Status**: Complete [OK]
 * **Implementation**:
   - Added **Save Preset** action button inside configurations.
   - Custom widgets saved by developers are stored and can be instantiated from the templates selector list.
 
-### PBI-20: Bulk Replace Data Connections
+### PBI-18: Bulk Connection Relinker
 * **Status**: Complete [OK]
 * **Implementation**:
   - Added **Bulk replace connections** remapping mapper.
   - Swapping connections instantly updates database dataset IDs on all active widgets on the board.
+
+### PBI-19: Canvas Responsive Layout Designer
+* **Status**: Complete [OK]
+* **Implementation**:
+  - Added simulated viewport size selector controls (Desktop 💻, Tablet 📱, Mobile 📱) to the main dashboard header panel.
+  - Toggling viewports constrains the grid canvas wrapper size dynamically (`w-full` for desktop, `768px` for tablet, and `380px` for mobile) which is observed by Resizable grids.
+  - Configured custom layout coordinate mappings to allow editing and modifying widget grid coordinates for tablet and mobile screens separately without breaking the default desktop coordinates.
+
+### PBI-20: Audit Logs for Widget Configs
+* **Status**: Complete [OK]
+* **Implementation**:
+  - Implemented the **widgetAuditLogs** ledger array recording developer events (CREATE, UPDATE, DELETE, THEME changes).
+  - Designed an **Audit** panel tab inside the settings sidebar to list transactions chronologically with metadata parameters (author names, timestamps, summaries).
+  - Wired rollback click linkages on audit entries that immediately restore the workspace widgets array to the snapshot recorded at transaction time.
 
 ---
 
