@@ -6,6 +6,8 @@ from apps.authentication.views import (
     ForgotPasswordView,
     ResetPasswordView,
     CustomTokenObtainPairView,
+    SSOAuthorizeView,
+    SSOCallbackView,
 )
 
 urlpatterns = [
@@ -15,4 +17,6 @@ urlpatterns = [
     path("verify-email/", VerifyEmailView.as_view(), name="auth_verify_email"),
     path("forgot-password/", ForgotPasswordView.as_view(), name="auth_forgot_password"),
     path("reset-password/", ResetPasswordView.as_view(), name="auth_reset_password"),
+    path("sso/authorize/", SSOAuthorizeView.as_view(), name="auth_sso_authorize"),
+    path("sso/callback/", SSOCallbackView.as_view(), name="auth_sso_callback"),
 ]

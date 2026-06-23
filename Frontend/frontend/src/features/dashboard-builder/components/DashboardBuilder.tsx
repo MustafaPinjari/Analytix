@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { apiClient } from '../../../services/apiClient';
-import { Dashboard, Widget, WidgetType, Dataset } from '../../../types';
+import { Dashboard, Widget, WidgetType, Dataset, DataPoint } from '../../../types';
 import {
   ArrowLeft,
   Eye,
@@ -56,6 +56,7 @@ import RGL from 'react-grid-layout';
 const GridCanvas: any = RGL;
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, PieChart, Pie, CartesianGrid, XAxis, YAxis, Tooltip } from 'recharts';
 import WidgetRenderer from '../../widgets/components/WidgetRenderer';
+import { InsightEngine } from '../../../services/InsightEngine';
 import { useUIStore } from '../../../store/useUIStore';
 import { useAuthStore } from '../../../store/useAuthStore';
 import { cn } from '../../../utils';
@@ -191,6 +192,24 @@ export default function DashboardBuilder() {
   const [configDrawerOpen, setConfigDrawerOpen] = useState(false);
   const [sharingModalOpen, setSharingModalOpen] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+
+  // Insight Narrator States
+  const [loadedWidgetData, setLoadedWidgetData] = useState<Record<string, DataPoint[]>>({});
+  const [storyDrawerOpen, setStoryDrawerOpen] = useState(false);
+  const [storyDrawerType, setStoryDrawerType] = useState<'widget' | 'dashboard'>('widget');
+  const [activeStoryWidget, setActiveStoryWidget] = useState<Widget | null>(null);
+
+  // Compute widget and dashboard stories dynamically
+  const currentWidgetAnalysis = useMemo(() => {
+    if (!activeStoryWidget) return null;
+    const data = loadedWidgetData[activeStoryWidget.id] || [];
+    return InsightEngine.analyzeWidget(activeStoryWidget, data);
+  }, [activeStoryWidget, loadedWidgetData]);
+
+  const currentDashboardAnalysis = useMemo(() => {
+    if (!dashboard) return null;
+    return InsightEngine.analyzeDashboard(dashboard.widgets, loadedWidgetData);
+  }, [dashboard, loadedWidgetData]);
 
   // Multi-page layout navigation (PBI-15)
   const [activeTab, setActiveTab] = useState('Page 1');
@@ -1447,6 +1466,18 @@ print(df.head())`;
           </div>
 
           <button
+            onClick={() => {
+              setStoryDrawerType('dashboard');
+              setStoryDrawerOpen(true);
+            }}
+            className="flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-2 text-xs font-semibold text-amber-500 hover:bg-amber-500/20 transition-all hover:scale-[1.02] shadow-sm shadow-amber-500/10"
+            title="Generate Dashboard Story"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            Generate Dashboard Story
+          </button>
+
+          <button
             onClick={handleExportPDF}
             className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3.5 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors"
           >
@@ -2039,19 +2070,31 @@ print(df.head())`;
                           )}
 
                           <button 
-                            onClick={() => handleInspectRawData(widget)}
-                            className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground shrink-0"
-                            title="Inspect Raw Data"
-                          >
-                            <Table className="h-3 w-3" />
-                          </button>
-
-                          <button 
                             onClick={() => handleExportSingleWidgetPDF(widget)}
                             className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground shrink-0"
                             title="Download Widget PDF/PNG"
                           >
                             <FileDown className="h-3 w-3" />
+                          </button>
+
+                          <button 
+                            onClick={() => {
+                              setActiveStoryWidget(widget);
+                              setStoryDrawerType('widget');
+                              setStoryDrawerOpen(true);
+                            }}
+                            className="rounded p-1 text-amber-500 hover:bg-amber-500/10 shrink-0"
+                            title="Generate AI Story"
+                          >
+                            <Sparkles className="h-3 w-3" />
+                          </button>
+
+                          <button 
+                            onClick={() => handleInspectRawData(widget)}
+                            className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground shrink-0"
+                            title="Inspect Raw Data"
+                          >
+                            <Table className="h-3 w-3" />
                           </button>
 
                           {widget.type === 'kpi' && (
@@ -2136,6 +2179,9 @@ print(df.head())`;
                           activeCrossFilter={activeCrossFilter}
                           onCrossFilterSelected={(col, val) => setActiveCrossFilter({ column: col, value: val })}
                           onQueryCompleted={handleQueryCompleted}
+                          onDataLoaded={(widgetId, widgetData) => {
+                            setLoadedWidgetData(prev => ({ ...prev, [widgetId]: widgetData }));
+                          }}
                         />
                       </div>
                     </div>
@@ -3110,6 +3156,204 @@ print(df.head())`;
                   </ResponsiveContainer>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Premium Sliding Insight Drawer */}
+      {storyDrawerOpen && (
+        <div className="fixed inset-0 z-50 overflow-hidden text-zinc-100">
+          {/* Backdrop Overlay */}
+          <div 
+            className="absolute inset-0 bg-zinc-950/60 backdrop-blur-xs transition-opacity cursor-pointer" 
+            onClick={() => setStoryDrawerOpen(false)} 
+          />
+          
+          <div className="absolute inset-y-0 right-0 flex max-w-full pl-10">
+            <div className="w-screen max-w-lg transform bg-zinc-950 border-l border-zinc-800 shadow-2xl p-6 flex flex-col h-full text-left relative overflow-y-auto animate-slide-in-right">
+              {/* Header */}
+              <div className="flex items-center justify-between pb-4 border-b border-zinc-800 mb-6 shrink-0">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-amber-500 animate-pulse" />
+                  <div>
+                    <h3 className="text-sm font-black tracking-tight text-white uppercase">
+                      🤖 AI Business Insights
+                    </h3>
+                    <p className="text-[10px] text-zinc-500 font-semibold mt-0.5">
+                      {storyDrawerType === 'widget' && activeStoryWidget 
+                        ? `Story for: ${activeStoryWidget.title}` 
+                        : `Dashboard Health Summary`
+                      }
+                    </p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setStoryDrawerOpen(false)} 
+                  className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-white transition-all"
+                  title="Close panel"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Drawer Content */}
+              <div className="flex-1 space-y-6 overflow-y-auto pr-1">
+                {storyDrawerType === 'widget' && currentWidgetAnalysis && (
+                  <div className="space-y-6 text-xs font-semibold leading-relaxed">
+                    {/* Executive Summary */}
+                    <div className="space-y-2">
+                      <h4 className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">Executive Summary</h4>
+                      <p className="p-4 rounded-xl bg-zinc-900/60 border border-zinc-800/80 text-zinc-300 text-[11px] leading-relaxed shadow-inner">
+                        {currentWidgetAnalysis.executiveSummary}
+                      </p>
+                    </div>
+
+                    {/* Key Insights Grid */}
+                    <div className="space-y-2">
+                      <h4 className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">Key Insights</h4>
+                      <div className="grid grid-cols-2 gap-3">
+                        {currentWidgetAnalysis.keyInsights.map((insight, idx) => (
+                          <div 
+                            key={idx} 
+                            className="p-3.5 rounded-xl bg-zinc-900/40 border border-zinc-900 hover:border-zinc-800 hover:bg-zinc-900/60 transition-all flex flex-col justify-between shadow-md"
+                          >
+                            <span className="text-[9px] text-zinc-500 uppercase tracking-wider block font-bold">
+                              {insight.label.includes('Highest') ? '📈 ' : ''}
+                              {insight.label.includes('Share') ? '📊 ' : ''}
+                              {insight.label.includes('Growth') ? '⚡ ' : ''}
+                              {insight.label.includes('Best') ? '🎯 ' : ''}
+                              {insight.label}
+                            </span>
+                            <span className="text-sm font-black text-white mt-1.5 block">
+                              {insight.value}
+                            </span>
+                            <span className="text-[9px] text-zinc-500 font-medium block mt-0.5">
+                              {insight.sublabel}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Trends & Patterns */}
+                    <div className="space-y-2">
+                      <h4 className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">Trends & Patterns</h4>
+                      <ul className="space-y-2 bg-zinc-900/20 border border-zinc-900 p-4 rounded-xl">
+                        {currentWidgetAnalysis.trends.map((trend, idx) => (
+                          <li key={idx} className="flex gap-2 items-start text-zinc-300 text-[10.5px]">
+                            <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0 mt-1.5" />
+                            <span>{trend}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    {/* Anomaly Detection */}
+                    <div className="space-y-2">
+                      <h4 className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">Anomaly Detection</h4>
+                      <div className="space-y-2.5">
+                        {currentWidgetAnalysis.anomalies.map((anomaly, idx) => {
+                          const isWarning = anomaly.severity === 'warning' || anomaly.severity === 'critical';
+                          return (
+                            <div 
+                              key={idx} 
+                              className={cn(
+                                "p-3.5 rounded-xl border flex gap-3 items-start transition-all",
+                                isWarning 
+                                  ? "bg-amber-500/5 border-amber-500/20 text-amber-200" 
+                                  : "bg-zinc-900/30 border-zinc-900 text-zinc-400"
+                              )}
+                            >
+                              <AlertTriangle className={cn("h-4.5 w-4.5 shrink-0 mt-0.5", isWarning ? "text-amber-500" : "text-zinc-500")} />
+                              <div className="space-y-0.5">
+                                <h5 className="font-bold text-[11px] text-white">{anomaly.title}</h5>
+                                <p className="text-[9.5px] leading-relaxed font-semibold">{anomaly.description}</p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Recommendations */}
+                    <div className="space-y-2">
+                      <h4 className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">Business Recommendations</h4>
+                      <ul className="space-y-2.5 bg-zinc-900/20 border border-zinc-900 p-4 rounded-xl">
+                        {currentWidgetAnalysis.recommendations.map((rec, idx) => (
+                          <li key={idx} className="flex gap-2 items-start text-zinc-300 text-[10.5px]">
+                            <span className="text-amber-500 shrink-0 font-bold">✓</span>
+                            <span>{rec}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                )}
+
+                {storyDrawerType === 'dashboard' && currentDashboardAnalysis && (
+                  <div className="space-y-6 text-xs font-semibold leading-relaxed">
+                    {/* Health Score */}
+                    <div className="flex items-center justify-between p-4 bg-zinc-900/60 border border-zinc-800/80 rounded-xl shadow-inner gap-4">
+                      <div>
+                        <h4 className="text-[9px] font-black text-amber-500 uppercase tracking-wider">Overall Business Health Score</h4>
+                        <p className="text-[10.5px] text-zinc-400 mt-1 leading-normal font-semibold">Aggregated system efficiency calculated over active visual metrics.</p>
+                      </div>
+                      <div className="flex flex-col items-center justify-center border-2 border-amber-500/30 rounded-full h-16 w-16 bg-amber-500/5 shrink-0 select-none shadow-lg shadow-amber-500/10">
+                        <span className="text-lg font-black text-white leading-none">{currentDashboardAnalysis.healthScore}</span>
+                        <span className="text-[8px] font-bold text-zinc-500 uppercase tracking-widest mt-1">/ 100</span>
+                      </div>
+                    </div>
+
+                    {/* Executive Overview */}
+                    <div className="space-y-2">
+                      <h4 className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">Executive Overview</h4>
+                      <p className="p-4 rounded-xl bg-zinc-900/60 border border-zinc-800/80 text-zinc-300 text-[11px] leading-relaxed shadow-inner">
+                        {currentDashboardAnalysis.executiveOverview}
+                      </p>
+                    </div>
+
+                    {/* Opportunities */}
+                    <div className="space-y-2">
+                      <h4 className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">Top Opportunities</h4>
+                      <ul className="space-y-2 bg-zinc-900/20 border border-zinc-900 p-4 rounded-xl">
+                        {currentDashboardAnalysis.topOpportunities.map((opp, idx) => (
+                          <li key={idx} className="flex gap-2 items-start text-zinc-300 text-[10.5px]">
+                            <span className="text-emerald-500 shrink-0 font-bold">✨</span>
+                            <span>{opp}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    {/* Risks */}
+                    <div className="space-y-2">
+                      <h4 className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">Risks</h4>
+                      <ul className="space-y-2 bg-zinc-900/20 border border-zinc-900 p-4 rounded-xl">
+                        {currentDashboardAnalysis.risks.map((risk, idx) => (
+                          <li key={idx} className="flex gap-2 items-start text-zinc-300 text-[10.5px]">
+                            <span className="text-rose-500 shrink-0 font-bold">⚠</span>
+                            <span>{risk}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="space-y-2">
+                      <h4 className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">Recommended Actions</h4>
+                      <ul className="space-y-2.5 bg-zinc-900/20 border border-zinc-900 p-4 rounded-xl">
+                        {currentDashboardAnalysis.recommendedActions.map((action, idx) => (
+                          <li key={idx} className="flex gap-2 items-start text-zinc-300 text-[10.5px]">
+                            <span className="text-amber-500 shrink-0 font-bold">✓</span>
+                            <span>{action}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

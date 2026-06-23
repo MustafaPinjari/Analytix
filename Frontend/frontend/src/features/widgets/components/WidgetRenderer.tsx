@@ -66,6 +66,7 @@ interface WidgetRendererProps {
   activeCrossFilter?: { column: string; value: any } | null;
   onCrossFilterSelected?: (column: string, value: any) => void;
   onQueryCompleted?: (widgetId: string, durationMs: number, url: string, payload: any, responseStatus: number) => void;
+  onDataLoaded?: (widgetId: string, data: DataPoint[]) => void;
 }
 
 export default function WidgetRenderer({ 
@@ -74,7 +75,8 @@ export default function WidgetRenderer({
   globalParameters = [],
   activeCrossFilter,
   onCrossFilterSelected,
-  onQueryCompleted 
+  onQueryCompleted,
+  onDataLoaded
 }: WidgetRendererProps) {
   const isDark = useUIStore((state) => state.theme === 'dark');
   const [data, setData] = useState<DataPoint[]>([]);
@@ -189,6 +191,9 @@ export default function WidgetRenderer({
           });
           
           setData(mappedResults);
+          if (onDataLoaded) {
+            onDataLoaded(widget.id, mappedResults);
+          }
           
           const cacheDuration = widget.visualizationSettings.cacheTTL || 0;
           setCacheStatus(cacheDuration > 0 ? 'cached' : 'live');

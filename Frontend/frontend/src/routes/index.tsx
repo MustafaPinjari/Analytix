@@ -7,6 +7,7 @@ const LoginPage = lazy(() => import('../pages/LoginPage'));
 const RegisterPage = lazy(() => import('../pages/RegisterPage'));
 const ForgotPasswordPage = lazy(() => import('../pages/ForgotPasswordPage'));
 const ResetPasswordPage = lazy(() => import('../pages/ResetPasswordPage'));
+const SSOCallbackPage = lazy(() => import('../pages/SSOCallbackPage'));
 
 const DashboardsPage = lazy(() => import('../pages/DashboardsPage'));
 const DashboardBuilderPage = lazy(() => import('../pages/DashboardBuilderPage'));
@@ -164,6 +165,16 @@ export const router = createBrowserRouter([
     element: (
       <Suspense fallback={<ScreenSpinner />}>
         <DashboardBuilderPage />
+      </Suspense>
+    ),
+  },
+
+  // Public SSO Callback Route
+  {
+    path: 'sso-callback',
+    element: (
+      <Suspense fallback={<ScreenSpinner />}>
+        <SSOCallbackPage />
       </Suspense>
     ),
   },

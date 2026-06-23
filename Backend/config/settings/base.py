@@ -201,4 +201,24 @@ CELERY_TASK_ROUTES = {
     "apps.authentication.tasks.*": {"queue": "default"},
 }
 
+import os
+import environ
+
+env = environ.Env()
+environ.Env.read_env(os.path.join(BASE_DIR, ".env"))
+
+# Google Workspace OIDC Client settings
+GOOGLE_CLIENT_ID = env.str("GOOGLE_CLIENT_ID", default="")
+GOOGLE_CLIENT_SECRET = env.str("GOOGLE_CLIENT_SECRET", default="")
+
+# Okta OIDC Client settings
+OKTA_CLIENT_ID = env.str("OKTA_CLIENT_ID", default="")
+OKTA_CLIENT_SECRET = env.str("OKTA_CLIENT_SECRET", default="")
+OKTA_DOMAIN = env.str("OKTA_DOMAIN", default="dev-12345.okta.com")
+
+# Azure AD OIDC Client settings
+AZURE_CLIENT_ID = env.str("AZURE_CLIENT_ID", default="")
+AZURE_CLIENT_SECRET = env.str("AZURE_CLIENT_SECRET", default="")
+AZURE_TENANT_ID = env.str("AZURE_TENANT_ID", default="common")
+
 

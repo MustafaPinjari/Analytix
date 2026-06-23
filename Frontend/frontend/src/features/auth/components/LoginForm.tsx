@@ -20,6 +20,11 @@ export default function LoginForm() {
   const [apiError, setApiError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const handleSSOLogin = (provider: 'google' | 'okta' | 'azure') => {
+    const baseApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+    window.location.href = `${baseApiUrl}/auth/sso/authorize/?provider=${provider}`;
+  };
+
   const {
     register,
     handleSubmit,
@@ -156,26 +161,41 @@ export default function LoginForm() {
           <div className="flex-grow border-t border-zinc-200"></div>
         </div>
 
-        {/* SSO Button (CUST-11) */}
-        <button
-          type="button"
-          onClick={() => {
-            alert("Redirecting to corporate SAML Single Sign-On portal (Okta/Azure AD IDP)...");
-            // Simulate user authentication by saving fake token
-            localStorage.setItem('analytix-auth-storage', JSON.stringify({
-              state: {
-                user: { id: "u-sso", name: "SSO User", email: "sso@enterprise.com", role: "admin", organizationId: "org-sso" },
-                accessToken: "sso-mock-token",
-                isAuthenticated: true
-              }
-            }));
-            window.location.href = "/dashboards";
-          }}
-          className="flex w-full items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 py-2.5 text-sm font-bold text-zinc-700 hover:bg-zinc-50 active:scale-[0.98] transition-all cursor-pointer shadow-sm"
-        >
-          <ShieldCheck className="h-4 w-4 text-zinc-400" />
-          SAML Identity Provider SSO
-        </button>
+        {/* SSO Panel (CUST-11 / SSO-1) */}
+        <div className="flex flex-col gap-2.5">
+          <button
+            type="button"
+            onClick={() => handleSSOLogin('google')}
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 py-2.5 text-xs font-bold text-zinc-700 hover:bg-zinc-50 active:scale-[0.98] transition-all cursor-pointer shadow-sm hover:border-zinc-300"
+          >
+            <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24">
+              <path fill="#EA4335" d="M12 5.04c1.66 0 3.2.57 4.38 1.69l3.27-3.27C17.67 1.58 15.01 1 12 1 7.24 1 3.23 3.73 1.34 7.68l3.87 3C6.13 7.82 8.8 5.04 12 5.04z"/>
+              <path fill="#4285F4" d="M23.49 12.27c0-.81-.07-1.59-.2-2.34H12v4.44h6.45c-.28 1.48-1.11 2.73-2.37 3.58l3.68 2.85c2.15-1.98 3.39-4.89 3.39-8.53z"/>
+              <path fill="#FBBC05" d="M5.21 14.68c-.23-.68-.36-1.42-.36-2.18s.13-1.5.36-2.18L1.34 7.32C.48 9.12 0 11.01 0 12.5s.48 3.38 1.34 5.18l3.87-3z"/>
+              <path fill="#34A853" d="M12 18.96c-3.2 0-5.87-2.78-6.79-5.64l-3.87 3c1.89 3.95 5.9 6.68 10.66 6.68 3.01 0 5.67-.58 7.67-2.11l-3.68-2.85c-1.18.82-2.72 1.32-4.38 1.32z"/>
+            </svg>
+            Google Workspace SSO
+          </button>
+          
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => handleSSOLogin('azure')}
+              className="flex items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-[10px] font-bold text-zinc-700 hover:bg-zinc-50 active:scale-[0.98] transition-all cursor-pointer shadow-sm hover:border-zinc-300"
+            >
+              <ShieldCheck className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+              Azure AD SSO
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSSOLogin('okta')}
+              className="flex items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-[10px] font-bold text-zinc-700 hover:bg-zinc-50 active:scale-[0.98] transition-all cursor-pointer shadow-sm hover:border-zinc-300"
+            >
+              <ShieldCheck className="h-3.5 w-3.5 text-violet-500 shrink-0" />
+              Okta SSO Portal
+            </button>
+          </div>
+        </div>
       </form>
 
       {/* Footer link */}
