@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useUIStore } from '../../../store/useUIStore';
+import { useAuthStore } from '../../../store/useAuthStore';
 import {
   LayoutDashboard,
   Database,
@@ -29,6 +30,7 @@ const navItems: NavItem[] = [
 export default function Sidebar() {
   const location = useLocation();
   const { sidebarCollapsed, toggleSidebar } = useUIStore();
+  const { user } = useAuthStore();
 
   const isPathActive = (path: string) => {
     if (path === '/dashboards') {
@@ -36,6 +38,13 @@ export default function Sidebar() {
     }
     return location.pathname.startsWith(path);
   };
+
+  const visibleNavItems = navItems.filter((item) => {
+    if (item.path === '/users' || item.path === '/settings') {
+      return user?.role === 'owner' || user?.role === 'admin';
+    }
+    return true;
+  });
 
   return (
     <aside
@@ -58,7 +67,7 @@ export default function Sidebar() {
 
       {/* Nav Links Section */}
       <nav className="flex-1 space-y-1.5 p-3">
-        {navItems.map((item) => {
+        {visibleNavItems.map((item) => {
           const active = isPathActive(item.path);
           const Icon = item.icon;
 

@@ -29,9 +29,10 @@ export default function SSOCallbackPage() {
 
         const userPayload = response.data.data;
         const orgs = userPayload.organizations || [];
+        const isSuperuser = !!userPayload.is_superuser;
         const backendRole = orgs[0]?.role || "VIEWER";
         const frontendRole: 'owner' | 'admin' | 'editor' | 'viewer' = 
-          backendRole === "SUPER_ADMIN" || backendRole === "ORG_ADMIN" ? "admin" : 
+          isSuperuser || backendRole === "SUPER_ADMIN" || backendRole === "ORG_ADMIN" ? "admin" : 
           backendRole === "ANALYST" ? "editor" : "viewer";
 
         const mappedUser = {
@@ -40,6 +41,7 @@ export default function SSOCallbackPage() {
           email: userPayload.email,
           role: frontendRole,
           organizationId: orgs[0]?.id || "",
+          is_superuser: isSuperuser,
         };
 
         // Save auth state

@@ -23,7 +23,7 @@ export default function Header({ onToggleNotifications, unreadCount }: HeaderPro
   const orgRef = useRef<HTMLDivElement>(null);
   
   const [activeOrgName, setActiveOrgName] = useState('Select Organization');
-  const [orgs, setOrgs] = useState<{ id: string; name: string }[]>([]);
+  const [orgs, setOrgs] = useState<{ id: string; name: string; role?: string }[]>([]);
 
   // Fetch tenant organizations list
   useEffect(() => {
@@ -33,13 +33,25 @@ export default function Header({ onToggleNotifications, unreadCount }: HeaderPro
         const results = response.data.results || [];
         setOrgs(results);
         
+        const getFrontendRole = (backendRole?: string) => {
+          if (user?.is_superuser) return "admin";
+          if (!backendRole) return "viewer";
+          return backendRole === "SUPER_ADMIN" || backendRole === "ORG_ADMIN" ? "admin" : 
+                 backendRole === "ANALYST" ? "editor" : "viewer";
+        };
+
         const currentOrgId = user?.organizationId;
         const currentOrg = results.find((o: any) => o.id === currentOrgId);
         if (currentOrg) {
           setActiveOrgName(currentOrg.name);
+          const mappedRole = getFrontendRole(currentOrg.role);
+          if (user?.role !== mappedRole) {
+            setOrganization(currentOrg.id, mappedRole);
+          }
         } else if (results.length > 0) {
           setActiveOrgName(results[0].name);
-          setOrganization(results[0].id);
+          const mappedRole = getFrontendRole(results[0].role);
+          setOrganization(results[0].id, mappedRole);
         }
       } catch (err) {
         console.error('Error fetching organizations:', err);
@@ -69,8 +81,15 @@ export default function Header({ onToggleNotifications, unreadCount }: HeaderPro
     navigate('/login');
   };
 
-  const handleSwitchOrg = (org: { id: string; name: string }) => {
-    setOrganization(org.id);
+  const handleSwitchOrg = (org: any) => {
+    const getFrontendRole = (backendRole?: string) => {
+      if (user?.is_superuser) return "admin";
+      if (!backendRole) return "viewer";
+      return backendRole === "SUPER_ADMIN" || backendRole === "ORG_ADMIN" ? "admin" : 
+             backendRole === "ANALYST" ? "editor" : "viewer";
+    };
+    const mappedRole = getFrontendRole(org.role);
+    setOrganization(org.id, mappedRole);
     setActiveOrgName(org.name);
     setOrgOpen(false);
     // Reload dashboard page contextually

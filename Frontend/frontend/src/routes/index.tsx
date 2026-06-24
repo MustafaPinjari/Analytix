@@ -49,6 +49,22 @@ const PublicOnlyRoute = () => {
   return <Outlet />;
 };
 
+const AdminRoute = () => {
+  const user = useAuthStore((state) => state.user);
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const location = useLocation();
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  if (user?.role !== 'admin' && user?.role !== 'owner') {
+    return <Navigate to="/dashboards" replace />;
+  }
+
+  return <Outlet />;
+};
+
 export const router = createBrowserRouter([
   // Public Auth Routes
   {
@@ -139,20 +155,25 @@ export const router = createBrowserRouter([
             ),
           },
           {
-            path: 'users',
-            element: (
-              <Suspense fallback={<ScreenSpinner />}>
-                <UserManagementPage />
-              </Suspense>
-            ),
-          },
-          {
-            path: 'settings',
-            element: (
-              <Suspense fallback={<ScreenSpinner />}>
-                <OrgSettingsPage />
-              </Suspense>
-            ),
+            element: <AdminRoute />,
+            children: [
+              {
+                path: 'users',
+                element: (
+                  <Suspense fallback={<ScreenSpinner />}>
+                    <UserManagementPage />
+                  </Suspense>
+                ),
+              },
+              {
+                path: 'settings',
+                element: (
+                  <Suspense fallback={<ScreenSpinner />}>
+                    <OrgSettingsPage />
+                  </Suspense>
+                ),
+              },
+            ],
           },
         ],
       },

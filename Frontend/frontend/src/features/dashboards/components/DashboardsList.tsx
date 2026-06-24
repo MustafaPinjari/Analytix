@@ -19,9 +19,11 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { formatDate, cn } from '../../../utils';
+import { useAuthStore } from '../../../store/useAuthStore';
 
 export default function DashboardsList() {
   const navigate = useNavigate();
+  const { user } = useAuthStore();
   const [dashboards, setDashboards] = useState<Dashboard[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
@@ -174,13 +176,15 @@ export default function DashboardsList() {
             Access and manage your visual workspaces, KPI reports, and charts.
           </p>
         </div>
-        <button
-          onClick={handleCreateNew}
-          className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 hover:brightness-110 active:scale-[0.98] transition-all"
-        >
-          <Plus className="h-4 w-4" />
-          New Dashboard
-        </button>
+        {user?.role !== 'viewer' && (
+          <button
+            onClick={handleCreateNew}
+            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 hover:brightness-110 active:scale-[0.98] transition-all"
+          >
+            <Plus className="h-4 w-4" />
+            New Dashboard
+          </button>
+        )}
       </div>
 
       {/* CUST-13: Pinned KPI Strip Home Panel */}
@@ -404,13 +408,15 @@ export default function DashboardsList() {
           <p className="text-xs text-muted-foreground mt-1 max-w-sm">
             Try adjusting your search query, or create a new dashboard to get started with building charts.
           </p>
-          <button
-            onClick={handleCreateNew}
-            className="mt-4 flex items-center gap-1.5 rounded-lg bg-primary/10 px-4 py-2 text-xs font-semibold text-primary hover:bg-primary/20 transition-all"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Create First Dashboard
-          </button>
+          {user?.role !== 'viewer' && (
+            <button
+              onClick={handleCreateNew}
+              className="mt-4 flex items-center gap-1.5 rounded-lg bg-primary/10 px-4 py-2 text-xs font-semibold text-primary hover:bg-primary/20 transition-all"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Create First Dashboard
+            </button>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -426,15 +432,17 @@ export default function DashboardsList() {
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/5 border border-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
                     <LayoutDashboard className="h-5 w-5" />
                   </div>
-                  <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={(e) => handleDelete(dash.id, e)}
-                      className="rounded-lg p-1.5 text-muted-foreground hover:bg-red-500/10 hover:text-red-500 transition-all"
-                      title="Delete dashboard"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
+                  {user?.role !== 'viewer' && (
+                    <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={(e) => handleDelete(dash.id, e)}
+                        className="rounded-lg p-1.5 text-muted-foreground hover:bg-red-500/10 hover:text-red-500 transition-all"
+                        title="Delete dashboard"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <h3 className="text-sm font-bold text-foreground mt-4 group-hover:text-primary transition-colors line-clamp-1">

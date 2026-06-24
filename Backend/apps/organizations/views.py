@@ -18,7 +18,7 @@ class OrganizationListCreateView(APIView):
         else:
             orgs = Organization.objects.filter(user_roles__user=request.user)
 
-        serializer = OrganizationSerializer(orgs, many=True)
+        serializer = OrganizationSerializer(orgs, many=True, context={"request": request})
         return Response({"success": True, "results": serializer.data}, status=status.HTTP_200_OK)
 
     def post(self, request):

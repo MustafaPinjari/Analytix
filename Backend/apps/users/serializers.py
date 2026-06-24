@@ -6,8 +6,8 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ("id", "email", "first_name", "last_name", "is_verified", "organizations", "created_at")
-        read_only_fields = ("id", "email", "is_verified", "created_at")
+        fields = ("id", "email", "first_name", "last_name", "is_verified", "is_superuser", "organizations", "created_at")
+        read_only_fields = ("id", "email", "is_verified", "is_superuser", "created_at")
 
     def get_organizations(self, obj):
         return [

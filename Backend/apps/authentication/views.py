@@ -274,14 +274,13 @@ class SSOCallbackView(APIView):
                 user.save()
                 
                 org_name = f"{state.upper()} SSO Org"
-                org = Organization.objects.filter(name=org_name).first()
-                if not org:
-                    org = Organization.objects.create(name=org_name)
+                org, created = Organization.objects.get_or_create(name=org_name)
                 
+                role = "SUPER_ADMIN" if created else "VIEWER"
                 UserOrganizationRole.objects.create(
                     user=user,
                     organization=org,
-                    role="SUPER_ADMIN"
+                    role=role
                 )
         except Exception as e:
             return redirect(f"http://localhost:5173/login?error=user_creation_failed&detail={urllib.parse.quote(str(e))}")

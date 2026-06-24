@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Users,
   Search,
@@ -9,6 +9,8 @@ import {
   X,
   CheckCircle2,
 } from 'lucide-react';
+import { apiClient } from '../../../services/apiClient';
+import { useAuthStore } from '../../../store/useAuthStore';
 
 interface OrgUser {
   id: string;
@@ -19,44 +21,12 @@ interface OrgUser {
   joinedAt: string;
 }
 
-const INITIAL_USERS: OrgUser[] = [
-  {
-    id: 'u-1',
-    name: 'Sarah Connor',
-    email: 'sarah.connor@cyberdyne.com',
-    role: 'owner',
-    status: 'active',
-    joinedAt: '2026-01-10T08:00:00Z',
-  },
-  {
-    id: 'u-2',
-    name: 'John Connor',
-    email: 'john.connor@cyberdyne.com',
-    role: 'admin',
-    status: 'active',
-    joinedAt: '2026-02-15T09:15:00Z',
-  },
-  {
-    id: 'u-3',
-    name: 'Kyle Reese',
-    email: 'kyle.reese@cyberdyne.com',
-    role: 'editor',
-    status: 'active',
-    joinedAt: '2026-03-01T10:00:00Z',
-  },
-  {
-    id: 'u-4',
-    name: 'Marcus Wright',
-    email: 'marcus.wright@cyberdyne.com',
-    role: 'viewer',
-    status: 'invited',
-    joinedAt: '2026-06-22T12:00:00Z',
-  },
-];
-
 export default function UserManagementManager() {
-  const [users, setUsers] = useState<OrgUser[]>(INITIAL_USERS);
+  const { user } = useAuthStore();
+  const [users, setUsers] = useState<OrgUser[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   
   // Invite Dialog states
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -65,45 +35,91 @@ export default function UserManagementManager() {
   const [inviteRole, setInviteRole] = useState<OrgUser['role']>('viewer');
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
+  const fetchUsers = async () => {
+    setLoading(true);
+    setErrorMsg(null);
+    try {
+      const response = await apiClient.get('/users/');
+      const results = response.data.results || [];
+      const mapped: OrgUser[] = results.map((m: any) => {
+        const u = m.user;
+        const backendRole = m.role;
+        const frontendRole: 'owner' | 'admin' | 'editor' | 'viewer' = 
+          backendRole === "SUPER_ADMIN" ? "owner" :
+          backendRole === "ORG_ADMIN" ? "admin" :
+          backendRole === "ANALYST" ? "editor" : "viewer";
+
+        return {
+          id: u.id,
+          name: `${u.first_name || ""} ${u.last_name || ""}`.trim() || u.email,
+          email: u.email,
+          role: frontendRole,
+          status: u.is_active ? 'active' : 'invited',
+          joinedAt: u.created_at || m.created_at,
+        };
+      });
+      setUsers(mapped);
+    } catch (err: any) {
+      console.error('Error fetching organization users:', err);
+      setErrorMsg('Failed to fetch organization users.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (user) {
+      fetchUsers();
+    }
+  }, [user]);
+
   const handleRoleChange = (id: string, newRole: OrgUser['role']) => {
+    // Note: backend doesn't support direct update, keep local update
     setUsers((prev) =>
       prev.map((u) => (u.id === id ? { ...u, role: newRole } : u))
     );
   };
 
   const handleDeleteUser = (id: string, name: string) => {
-    if (id === 'u-1') {
-      alert('Cannot delete organization owner account.');
-      return;
-    }
+    // Note: backend doesn't support delete, keep local update
     if (confirm(`Are you sure you want to remove user "${name}"?`)) {
       setUsers((prev) => prev.filter((u) => u.id !== id));
     }
   };
 
-  const handleInviteSubmit = (e: React.FormEvent) => {
+  const handleInviteSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inviteName || !inviteEmail) return;
+    if (!inviteEmail) return;
 
-    const newUser: OrgUser = {
-      id: `u-${Date.now()}`,
-      name: inviteName,
-      email: inviteEmail,
-      role: inviteRole,
-      status: 'invited',
-      joinedAt: new Date().toISOString(),
-    };
+    setErrorMsg(null);
+    try {
+      const backendRole = 
+        inviteRole === 'owner' ? 'SUPER_ADMIN' :
+        inviteRole === 'admin' ? 'ORG_ADMIN' :
+        inviteRole === 'editor' ? 'ANALYST' : 'VIEWER';
 
-    setUsers((prev) => [...prev, newUser]);
-    setSuccessMsg(`Invitation successfully dispatched to ${inviteEmail}`);
-    
-    // Reset Form
-    setInviteName('');
-    setInviteEmail('');
-    setInviteRole('viewer');
-    setInviteOpen(false);
-    
-    setTimeout(() => setSuccessMsg(null), 3000);
+      await apiClient.post(`/organizations/${user?.organizationId}/invite/`, {
+        email: inviteEmail,
+        role: backendRole
+      });
+
+      setSuccessMsg(`Invitation successfully dispatched to ${inviteEmail}`);
+      
+      // Reset Form
+      setInviteName('');
+      setInviteEmail('');
+      setInviteRole('viewer');
+      setInviteOpen(false);
+      
+      // Refresh list
+      fetchUsers();
+      
+      setTimeout(() => setSuccessMsg(null), 3000);
+    } catch (err: any) {
+      console.error('Error inviting user:', err);
+      const msg = err.response?.data?.error?.message || err.response?.data?.detail || 'Failed to dispatch user invitation.';
+      alert(msg);
+    }
   };
 
   const filteredUsers = users.filter(
@@ -169,7 +185,7 @@ export default function UserManagementManager() {
                   <td className="p-4">
                     <div className="flex items-center gap-3">
                       <div className="h-8 w-8 rounded-full bg-violet-600/10 text-violet-500 font-bold flex items-center justify-center border border-violet-500/10 text-xs">
-                        {u.name.split(' ').map((n) => n[0]).join('')}
+                        {u.name.split(' ').map((n) => n[0] || '').join('').substring(0, 2).toUpperCase() || '?'}
                       </div>
                       <div>
                         <p className="font-bold text-foreground">{u.name}</p>

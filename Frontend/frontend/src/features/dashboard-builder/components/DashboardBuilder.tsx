@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import html2canvas from 'html2canvas-pro';
 import { jsPDF } from 'jspdf';
 import { apiClient } from '../../../services/apiClient';
-import { Dashboard, Widget, WidgetType, Dataset, DataPoint } from '../../../types';
+import { Dashboard, Widget, WidgetType, Dataset, DataPoint, WidgetLayout } from '../../../types';
 import {
   ArrowLeft,
   Eye,
@@ -190,7 +190,10 @@ export default function DashboardBuilder() {
   // Dashboard workspace states
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [datasets, setDatasets] = useState<Dataset[]>([]);
-  const [isEditMode, setIsEditMode] = useState(true);
+  const [isEditMode, setIsEditMode] = useState(() => {
+    const activeUser = useAuthStore.getState().user;
+    return activeUser?.role !== 'viewer';
+  });
   const [selectedWidget, setSelectedWidget] = useState<Widget | null>(null);
   const [configDrawerOpen, setConfigDrawerOpen] = useState(false);
   const [sharingModalOpen, setSharingModalOpen] = useState(false);
@@ -427,6 +430,13 @@ export default function DashboardBuilder() {
       }));
     }
   }, [activeTab, user]);
+
+  useEffect(() => {
+    if (user?.role === 'viewer') {
+      setIsEditMode(false);
+      setConfigDrawerOpen(false);
+    }
+  }, [user?.role]);
 
   const handleCanvasMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN || !user || !dashboardRef.current) return;
@@ -877,6 +887,10 @@ print(df.head())`;
   // Handle saving configurations
   const handleSave = async () => {
     if (!dashboard) return;
+    if (user?.role === 'viewer') {
+      alert("You do not have permission to modify dashboards.");
+      return;
+    }
     setSaveStatus('saving');
     try {
       await apiClient.put(`/dashboards/${dashboard.id}/`, {
@@ -1517,32 +1531,33 @@ print(df.head())`;
             </div>
           )}
 
-          <div className="flex rounded-lg border border-border bg-card p-1">
-
-            <button
-              onClick={() => {
-                setIsEditMode(false);
-                setConfigDrawerOpen(false);
-              }}
-              className={cn(
-                'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-all',
-                !isEditMode ? 'bg-primary text-primary-foreground shadow' : 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              <Eye className="h-3.5 w-3.5" />
-              Preview
-            </button>
-            <button
-              onClick={() => setIsEditMode(true)}
-              className={cn(
-                'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-all',
-                isEditMode ? 'bg-primary text-primary-foreground shadow' : 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              <Edit3 className="h-3.5 w-3.5" />
-              Edit
-            </button>
-          </div>
+          {user?.role !== 'viewer' && (
+            <div className="flex rounded-lg border border-border bg-card p-1">
+              <button
+                onClick={() => {
+                  setIsEditMode(false);
+                  setConfigDrawerOpen(false);
+                }}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-all',
+                  !isEditMode ? 'bg-primary text-primary-foreground shadow' : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                <Eye className="h-3.5 w-3.5" />
+                Preview
+              </button>
+              <button
+                onClick={() => setIsEditMode(true)}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-all',
+                  isEditMode ? 'bg-primary text-primary-foreground shadow' : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                <Edit3 className="h-3.5 w-3.5" />
+                Edit
+              </button>
+            </div>
+          )}
 
           {/* PBI-19 Viewport Breakpoint simulation toggles */}
           <div className="flex rounded-lg border border-border bg-card p-1">

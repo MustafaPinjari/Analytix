@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { User } from '../types';
+import { User, UserRole } from '../types';
 
 interface AuthState {
   user: User | null;
@@ -12,7 +12,7 @@ interface AuthState {
   clearAuth: () => void;
   setError: (error: string | null) => void;
   setLoading: (isLoading: boolean) => void;
-  setOrganization: (orgId: string) => void;
+  setOrganization: (orgId: string, role?: UserRole) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -27,12 +27,13 @@ export const useAuthStore = create<AuthState>()(
       clearAuth: () => set({ user: null, accessToken: null, isAuthenticated: false, error: null }),
       setError: (error) => set({ error }),
       setLoading: (isLoading) => set({ isLoading }),
-      setOrganization: (orgId) => set((state) => {
+      setOrganization: (orgId, role) => set((state) => {
         if (!state.user) return {};
         return {
           user: {
             ...state.user,
             organizationId: orgId,
+            ...(role ? { role } : {}),
           }
         };
       }),

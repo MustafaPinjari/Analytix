@@ -9,7 +9,7 @@ import { Mail, Lock, ShieldCheck } from 'lucide-react';
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
-  password: z.string().min(6, 'Password must be at least 6 characters long'),
+  password: z.string().min(5, 'Password must be at least 5 characters long'),
 });
 
 type LoginFormValues = z.infer<typeof loginSchema>;
@@ -52,9 +52,10 @@ export default function LoginForm() {
       const userPayload = responseData.user;
       const orgs = responseData.organizations || [];
 
+      const isSuperuser = !!userPayload.is_superuser;
       const backendRole = orgs[0]?.role || "VIEWER";
       const frontendRole: 'owner' | 'admin' | 'editor' | 'viewer' = 
-        backendRole === "SUPER_ADMIN" || backendRole === "ORG_ADMIN" ? "admin" : 
+        isSuperuser || backendRole === "SUPER_ADMIN" || backendRole === "ORG_ADMIN" ? "admin" : 
         backendRole === "ANALYST" ? "editor" : "viewer";
 
       const mappedUser = {
@@ -63,6 +64,7 @@ export default function LoginForm() {
         email: userPayload.email,
         role: frontendRole,
         organizationId: orgs[0]?.id || "",
+        is_superuser: isSuperuser,
       };
 
       setAuth(mappedUser, accessToken);

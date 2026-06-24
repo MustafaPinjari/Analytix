@@ -11,6 +11,7 @@ export interface User {
   role: UserRole;
   avatarUrl?: string;
   organizationId: string;
+  is_superuser?: boolean;
 }
 
 export interface Organization {

@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from apps.users.models import UserOrganizationRole
 from apps.users.serializers import UserSerializer, UserOrgRoleSerializer
-from core.permissions import HasTenantContext, IsViewer
+from core.permissions import HasTenantContext, IsViewer, IsOrgAdmin
 
 class UserProfileView(APIView):
     permission_classes = [IsAuthenticated]
@@ -28,7 +28,7 @@ class UserProfileView(APIView):
 
 
 class UserListView(APIView):
-    permission_classes = [IsAuthenticated, HasTenantContext, IsViewer]
+    permission_classes = [IsAuthenticated, HasTenantContext, IsOrgAdmin]
 
     def get(self, request):
         memberships = UserOrganizationRole.objects.filter(

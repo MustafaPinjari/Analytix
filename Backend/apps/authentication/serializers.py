@@ -40,6 +40,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             "first_name": user.first_name,
             "last_name": user.last_name,
             "is_verified": user.is_verified,
+            "is_superuser": user.is_superuser,
         }
         
         # Retrieve organization roles
