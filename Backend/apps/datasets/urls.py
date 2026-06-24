@@ -5,7 +5,8 @@ from apps.datasets.views import (
     DatasetUploadView, 
     DatasetQueryView,
     DatabaseConnectionListCreateView,
-    DatabaseConnectionTestView
+    DatabaseConnectionTestView,
+    DatasetSQLCopilotView
 )
 
 urlpatterns = [
@@ -15,5 +16,6 @@ urlpatterns = [
     path("<uuid:dataset_id>/versions/", DatasetVersionListView.as_view(), name="dataset_version_list"),
     path("<uuid:dataset_id>/upload/", DatasetUploadView.as_view(), name="dataset_upload"),
     path("<uuid:dataset_id>/query/", DatasetQueryView.as_view(), name="dataset_query"),
+    path("<uuid:dataset_id>/sql-copilot/", DatasetSQLCopilotView.as_view(), name="dataset_sql_copilot"),
 ]
 

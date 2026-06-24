@@ -14,7 +14,8 @@ import {
   Upload,
   X,
   Compass,
-  HardDrive
+  HardDrive,
+  Sparkles
 } from 'lucide-react';
 import { AgGridReact } from 'ag-grid-react';
 import { useUIStore } from '../../../store/useUIStore';
@@ -34,6 +35,10 @@ export default function DatasetsManager() {
   const [isRunning, setIsRunning] = useState(false);
   const [queryError, setQueryError] = useState<string | null>(null);
   const [runTime, setRunTime] = useState<number | null>(null);
+  
+  // AI SQL Copilot States
+  const [copilotPrompt, setCopilotPrompt] = useState('');
+  const [isCopilotLoading, setIsCopilotLoading] = useState(false);
 
   // Connections List & Creation States
   const [connections, setConnections] = useState<DatabaseConnection[]>([]);
@@ -178,6 +183,25 @@ export default function DatasetsManager() {
       setQueryResults([]);
     } finally {
       setIsRunning(false);
+    }
+  };
+
+  const handleAskCopilot = async () => {
+    if (!copilotPrompt.trim() || !selectedDataset) return;
+    setIsCopilotLoading(true);
+    try {
+      const response = await apiClient.post(`/datasets/${selectedDataset.id}/sql-copilot/`, {
+        prompt: copilotPrompt
+      });
+      if (response.data.success && response.data.generated_sql) {
+        setSqlQuery(response.data.generated_sql);
+        setCopilotPrompt('');
+      }
+    } catch (err: any) {
+      console.error('Error calling SQL Copilot:', err);
+      alert('AI SQL Copilot was unable to compile the query.');
+    } finally {
+      setIsCopilotLoading(false);
     }
   };
 
@@ -593,6 +617,26 @@ export default function DatasetsManager() {
                 <span className="text-[10px] font-mono text-zinc-500">
                   {selectedDataset.db_connection ? `${selectedDataset.connectionType.toUpperCase()} Engine` : 'Parquet Engine'}
                 </span>
+              </div>
+              
+              {/* AI SQL Copilot Input */}
+              <div className="flex items-center gap-2 bg-zinc-900/60 rounded-lg p-2 border border-zinc-800">
+                <Sparkles className="h-4 w-4 text-amber-500 shrink-0 animate-pulse" />
+                <input
+                  type="text"
+                  placeholder="Ask the AI Copilot to generate a query (e.g. Total sales by category)..."
+                  value={copilotPrompt}
+                  onChange={(e) => setCopilotPrompt(e.target.value)}
+                  className="flex-grow bg-transparent text-xs text-zinc-200 outline-none placeholder-zinc-500"
+                />
+                <button
+                  type="button"
+                  onClick={handleAskCopilot}
+                  disabled={isCopilotLoading || !copilotPrompt.trim()}
+                  className="rounded bg-primary px-3 py-1 text-[10px] font-bold text-white shadow hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50"
+                >
+                  {isCopilotLoading ? 'Generating...' : 'Ask AI'}
+                </button>
               </div>
               
               <textarea

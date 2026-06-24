@@ -250,3 +250,175 @@ class DatabaseConnectionTestView(APIView):
         except Exception as e:
             return Response({"success": False, "message": f"Connection error: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
 
+
+class DatasetSQLCopilotView(APIView):
+    permission_classes = [IsAuthenticated, HasTenantContext, IsViewer]
+
+    def post(self, request, dataset_id):
+        try:
+            dataset = Dataset.objects.get(id=dataset_id, organization=request.tenant)
+        except Dataset.DoesNotExist:
+            raise NotFoundException("Dataset not found in this organization.")
+
+        prompt = request.data.get("prompt")
+        if not prompt:
+            raise ValidationException("A prompt is required for the SQL Copilot.")
+
+        # Get dataset schema columns
+        serializer = DatasetSerializer(dataset)
+        columns = serializer.data.get("columns", [])
+        
+        # Determine table name
+        if dataset.db_connection:
+            table_name = "sales_performance_2026"
+        else:
+            table_name = f"{dataset.name.lower().replace(' ', '_')}_data"
+
+        # Apply heuristic generator
+        generated_sql = self.generate_sql_from_prompt(prompt, table_name, columns)
+
+        return Response(
+            {
+                "success": True,
+                "generated_sql": generated_sql
+            },
+            status=status.HTTP_200_OK
+        )
+
+    def generate_sql_from_prompt(self, prompt, table_name, columns):
+        import re
+        prompt_lower = prompt.lower()
+        
+        # Identify numeric/string columns
+        num_cols = [c['name'] for c in columns if c['type'] == 'number']
+        all_cols = [c['name'] for c in columns]
+        
+        select_fields = []
+        group_fields = []
+        
+        agg_func = None
+        agg_col = None
+        
+        # Simple mapping for sales/units
+        prompt_normalized = prompt_lower.replace("sales", "revenue")
+        
+        if "total" in prompt_normalized or "sum" in prompt_normalized:
+            agg_func = "SUM"
+        elif "average" in prompt_normalized or "avg" in prompt_normalized or "mean" in prompt_normalized:
+            agg_func = "AVG"
+        elif "count" in prompt_normalized or "number of" in prompt_normalized:
+            agg_func = "COUNT"
+        elif "maximum" in prompt_normalized or "highest" in prompt_normalized or "max" in prompt_normalized:
+            agg_func = "MAX"
+        elif "minimum" in prompt_normalized or "lowest" in prompt_normalized or "min" in prompt_normalized:
+            agg_func = "MIN"
+            
+        if agg_func:
+            best_num_col = None
+            for col in num_cols:
+                normalized_name = col.replace('_', ' ')
+                if normalized_name in prompt_normalized or col in prompt_normalized:
+                    best_num_col = col
+                    break
+            
+            if not best_num_col:
+                if agg_func == "COUNT":
+                    agg_col = "*"
+                elif num_cols:
+                    agg_col = num_cols[0]
+                else:
+                    agg_col = "*"
+            else:
+                agg_col = best_num_col
+                
+            select_fields.append(f"{agg_func}({agg_col}) as {agg_func.lower()}_{agg_col}")
+        
+        # Look for group by dimensions (by X, each X)
+        by_matches = re.findall(r'(?:by|each)\s+([a-zA-Z0-9_\s]+)', prompt_normalized)
+        for match in by_matches:
+            match_cleaned = match.strip()
+            for col in all_cols:
+                normalized_col = col.replace('_', ' ')
+                if normalized_col in match_cleaned or col in match_cleaned:
+                    if col not in group_fields:
+                        group_fields.append(col)
+                        
+        for col in all_cols:
+            if col not in num_cols and col not in group_fields:
+                normalized_col = col.replace('_', ' ')
+                if normalized_col in prompt_normalized or col in prompt_normalized:
+                    group_fields.append(col)
+                    
+        for gf in group_fields:
+            select_fields.insert(0, gf)
+            
+        if not select_fields:
+            select_fields = ["*"]
+            
+        sql = f"SELECT {', '.join(select_fields)}\nFROM {table_name}"
+        
+        # Filter clauses
+        where_clauses = []
+        
+        if "last" in prompt_normalized and "month" in prompt_normalized:
+            month_match = re.search(r'last\s+(\d+)\s+month', prompt_normalized)
+            months = int(month_match.group(1)) if month_match else 6
+            if 'date' in all_cols:
+                where_clauses.append(f"date >= date('now', '-{months} month')")
+                
+        str_cols = [c['name'] for c in columns if c['type'] == 'string']
+        for sc in str_cols:
+            normalized_sc = sc.replace('_', ' ')
+            if sc in prompt_normalized or normalized_sc in prompt_normalized:
+                pattern = rf'(?:{sc}|{normalized_sc})\s*(?:is|=|equals|in)\s*[\'"]?([a-zA-Z0-9_\s\-]+)[\'"]?'
+                match = re.search(pattern, prompt_normalized)
+                if match:
+                    val = match.group(1).strip()
+                    where_clauses.append(f"{sc} = '{val.title()}'")
+                else:
+                    if sc == 'region':
+                        for r in ['Europe', 'Asia', 'North America', 'South America']:
+                            if r.lower() in prompt_normalized:
+                                where_clauses.append(f"region = '{r}'")
+                                break
+                    elif sc == 'category':
+                        for c in ['Electronics', 'Office Supplies', 'Furniture', 'Apparel']:
+                            if c.lower() in prompt_normalized:
+                                where_clauses.append(f"category = '{c}'")
+                                break
+                                
+        for nc in num_cols:
+            normalized_nc = nc.replace('_', ' ')
+            pattern = rf'(?:{nc}|{normalized_nc})\s*(>=|<=|>|<|=)\s*(\d+)'
+            match = re.search(pattern, prompt_normalized)
+            if match:
+                op = match.group(1)
+                val = match.group(2)
+                where_clauses.append(f"{nc} {op} {val}")
+            else:
+                pattern_words = rf'(?:{nc}|{normalized_nc})\s*(?:greater than|more than)\s*(\d+)'
+                match_w = re.search(pattern_words, prompt_normalized)
+                if match_w:
+                    where_clauses.append(f"{nc} > {match_w.group(1)}")
+                    
+        if where_clauses:
+            sql += f"\nWHERE {' AND '.join(where_clauses)}"
+            
+        if group_fields:
+            sql += f"\nGROUP BY {', '.join(group_fields)}"
+            
+        if agg_func and ("top" in prompt_normalized or "highest" in prompt_normalized or "best" in prompt_normalized or "order by" in prompt_normalized or "sort by" in prompt_normalized):
+            sql += f"\nORDER BY {agg_func.lower()}_{agg_col} DESC"
+            
+        limit_match = re.search(r'limit\s+(\d+)', prompt_normalized)
+        if limit_match:
+            sql += f"\nLIMIT {limit_match.group(1)}"
+        elif "top" in prompt_normalized:
+            top_match = re.search(r'top\s+(\d+)', prompt_normalized)
+            l = top_match.group(1) if top_match else 5
+            sql += f"\nLIMIT {l}"
+        elif "limit" not in prompt_normalized and select_fields == ["*"]:
+            sql += "\nLIMIT 100"
+            
+        return sql + ";"
+
