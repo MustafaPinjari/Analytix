@@ -119,6 +119,21 @@ class ProcessDatasetUploadUseCase:
             user_id=user_id
         )
 
+        # Write to local analytical SQLite database (Phase 2)
+        try:
+            import sqlite3
+            from django.conf import settings
+            db_dir = os.path.join(settings.MEDIA_ROOT, "analytical_db")
+            os.makedirs(db_dir, exist_ok=True)
+            db_path = os.path.join(db_dir, "datasets.db")
+            table_name = f"ds_{os.path.basename(parquet_storage_path).split('.')[0]}"
+            with sqlite3.connect(db_path) as conn:
+                df_to_save = df if file_type.upper() == "CSV" else df_full
+                df_to_save.to_sql(table_name, conn, index=False, if_exists="replace")
+            logger.info(f"Dataset version {version.id} written successfully to analytical SQLite table {table_name}.")
+        except Exception as sqle:
+            logger.error(f"Failed to write dataset to analytical SQLite database: {str(sqle)}")
+
         return {
             "version": version,
             "columns": columns,

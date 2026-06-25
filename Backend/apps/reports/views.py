@@ -6,7 +6,7 @@ from apps.reports.models import Report, ReportHistory
 from apps.reports.serializers import ReportSerializer, ReportHistorySerializer
 from apps.reports.tasks import compile_report_task
 from core.permissions import HasTenantContext, IsViewer, IsAnalyst
-from core.exceptions import NotFoundException, ValidationException
+from core.exceptions import NotFoundException, ValidationException, PermissionDeniedException
 
 class ReportListCreateView(APIView):
     def get_permissions(self):
@@ -61,6 +61,11 @@ class ReportDetailView(APIView):
 
     def put(self, request, report_id):
         report = self._get_report(report_id, request.tenant)
+        
+        # Enforce report schedule ownership
+        if request.user_org_role not in ["SUPER_ADMIN", "ORG_ADMIN"] and report.created_by != request.user:
+            raise PermissionDeniedException("You do not have permission to modify this report schedule.")
+            
         serializer = ReportSerializer(report, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
 
@@ -81,6 +86,11 @@ class ReportDetailView(APIView):
 
     def delete(self, request, report_id):
         report = self._get_report(report_id, request.tenant)
+        
+        # Enforce report schedule ownership
+        if request.user_org_role not in ["SUPER_ADMIN", "ORG_ADMIN"] and report.created_by != request.user:
+            raise PermissionDeniedException("You do not have permission to delete this report schedule.")
+            
         report.delete()
         return Response(
             {
@@ -111,6 +121,10 @@ class ReportRunView(APIView):
             report = Report.objects.get(id=report_id, organization=request.tenant)
         except Report.DoesNotExist:
             raise NotFoundException("Report schedule not found.")
+
+        # Enforce report schedule ownership
+        if request.user_org_role not in ["SUPER_ADMIN", "ORG_ADMIN"] and report.created_by != request.user:
+            raise PermissionDeniedException("You do not have permission to run this report schedule.")
 
         # Trigger compile report Celery task
         compile_report_task.delay(str(report.id))

@@ -5,7 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from apps.dashboards.models import Dashboard
 from apps.dashboards.serializers import DashboardSerializer
 from core.permissions import HasTenantContext, IsViewer, IsAnalyst
-from core.exceptions import NotFoundException
+from core.exceptions import NotFoundException, PermissionDeniedException
 
 class DashboardListCreateView(APIView):
     def get_permissions(self):
@@ -54,6 +54,11 @@ class DashboardDetailView(APIView):
 
     def put(self, request, dashboard_id):
         dashboard = self._get_dashboard(dashboard_id, request.tenant)
+        
+        # Enforce resource ownership checks
+        if request.user_org_role not in ["SUPER_ADMIN", "ORG_ADMIN"] and dashboard.created_by != request.user:
+            raise PermissionDeniedException("You do not have permission to modify this dashboard.")
+            
         serializer = DashboardSerializer(dashboard, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
@@ -68,6 +73,11 @@ class DashboardDetailView(APIView):
 
     def delete(self, request, dashboard_id):
         dashboard = self._get_dashboard(dashboard_id, request.tenant)
+        
+        # Enforce resource ownership checks
+        if request.user_org_role not in ["SUPER_ADMIN", "ORG_ADMIN"] and dashboard.created_by != request.user:
+            raise PermissionDeniedException("You do not have permission to delete this dashboard.")
+            
         dashboard.delete()
         return Response(
             {

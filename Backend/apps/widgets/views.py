@@ -7,7 +7,7 @@ from apps.widgets.models import Widget
 from apps.datasets.models import Dataset
 from apps.widgets.serializers import WidgetSerializer
 from core.permissions import HasTenantContext, IsViewer, IsAnalyst
-from core.exceptions import NotFoundException, ValidationException
+from core.exceptions import NotFoundException, ValidationException, PermissionDeniedException
 
 class WidgetListCreateView(APIView):
     def get_permissions(self):
@@ -29,6 +29,11 @@ class WidgetListCreateView(APIView):
 
     def post(self, request, dashboard_id):
         dashboard = self._get_dashboard(dashboard_id, request.tenant)
+        
+        # Enforce parent dashboard ownership
+        if request.user_org_role not in ["SUPER_ADMIN", "ORG_ADMIN"] and dashboard.created_by != request.user:
+            raise PermissionDeniedException("You do not have permission to modify widgets on this dashboard.")
+            
         serializer = WidgetSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -70,6 +75,11 @@ class WidgetDetailView(APIView):
 
     def put(self, request, dashboard_id, widget_id):
         widget = self._get_widget(dashboard_id, widget_id, request.tenant)
+        
+        # Enforce parent dashboard ownership
+        if request.user_org_role not in ["SUPER_ADMIN", "ORG_ADMIN"] and widget.dashboard.created_by != request.user:
+            raise PermissionDeniedException("You do not have permission to modify widgets on this dashboard.")
+            
         serializer = WidgetSerializer(widget, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         
@@ -90,6 +100,11 @@ class WidgetDetailView(APIView):
 
     def delete(self, request, dashboard_id, widget_id):
         widget = self._get_widget(dashboard_id, widget_id, request.tenant)
+        
+        # Enforce parent dashboard ownership
+        if request.user_org_role not in ["SUPER_ADMIN", "ORG_ADMIN"] and widget.dashboard.created_by != request.user:
+            raise PermissionDeniedException("You do not have permission to modify widgets on this dashboard.")
+            
         widget.delete()
         return Response(
             {
