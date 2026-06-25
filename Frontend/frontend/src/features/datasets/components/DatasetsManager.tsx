@@ -22,12 +22,102 @@ import { useUIStore } from '../../../store/useUIStore';
 import { cn } from '../../../utils';
 import QueryBuilder from './QueryBuilder';
 
+const SANDBOX_TEMPLATES = [
+  {
+    name: 'Dataset Overview',
+    code: `import pandas as pd
+
+print("=== DATASET OVERVIEW ===")
+print("Total records:", len(df))
+print("Columns:", list(df.columns))
+print("\n=== SUMMARY STATISTICS ===")
+print(df.describe())`
+  },
+  {
+    name: 'Value Distribution Plot',
+    code: `import matplotlib.pyplot as plt
+import seaborn as sns
+
+print("Generating value distribution plot...")
+num_cols = df.select_dtypes(include=['number']).columns
+if len(num_cols) > 0:
+    col = num_cols[0]
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    sns.histplot(data=df, x=col, kde=True, ax=ax, color='#f59e0b')
+    ax.set_title(f"Distribution of {col}")
+    plt.show()
+else:
+    print("No numerical columns found to plot.")`
+  },
+  {
+    name: 'Category Group Analysis',
+    code: `import matplotlib.pyplot as plt
+import seaborn as sns
+
+print("Generating category group analysis...")
+cat_cols = df.select_dtypes(include=['object', 'category']).columns
+num_cols = df.select_dtypes(include=['number']).columns
+if len(cat_cols) > 0 and len(num_cols) > 0:
+    cat = cat_cols[0]
+    num = num_cols[0]
+    fig, ax = plt.subplots(figsize=(8, 5))
+    sns.boxplot(data=df, x=cat, y=num, ax=ax)
+    ax.set_title(f"{num} by {cat}")
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.show()
+else:
+    print("Requires at least one category and one numerical column.")`
+  },
+  {
+    name: 'Correlation Heatmap',
+    code: `import matplotlib.pyplot as plt
+import seaborn as sns
+
+print("Generating correlation matrix heatmap...")
+num_df = df.select_dtypes(include=['number'])
+if num_df.shape[1] > 1:
+    fig, ax = plt.subplots(figsize=(8, 6))
+    sns.heatmap(num_df.corr(), annot=True, cmap="YlOrBr", ax=ax)
+    ax.set_title("Feature Correlations Heatmap")
+    plt.tight_layout()
+    plt.show()
+else:
+    print("Not enough numerical columns to compute correlations.")`
+  }
+];
+
 export default function DatasetsManager() {
   const isDark = useUIStore((state) => state.theme === 'dark');
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [selectedDataset, setSelectedDataset] = useState<Dataset | null>(null);
-  const [activeTab, setActiveTab] = useState<'list' | 'connections' | 'workspace'>('list');
+  const [activeTab, setActiveTab] = useState<'list' | 'connections' | 'workspace' | 'sandbox'>('list');
   const [loading, setLoading] = useState(false);
+
+  // Python Sandbox States
+  const [sandboxCode, setSandboxCode] = useState(`import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Quick dataset profile
+print("Data Dimensions:", df.shape)
+print("\n--- Columns & Types ---")
+print(df.dtypes)
+
+# Generate a distribution chart
+if not df.empty:
+    fig, ax = plt.subplots(figsize=(6, 4))
+    num_cols = df.select_dtypes(include=['number']).columns
+    if len(num_cols) > 0:
+        col = num_cols[0]
+        sns.histplot(data=df, x=col, kde=True, ax=ax, color='#f59e0b')
+        ax.set_title(f"Distribution of {col}")
+        plt.show()
+`);
+  const [sandboxOutput, setSandboxOutput] = useState('');
+  const [sandboxError, setSandboxError] = useState<string | null>(null);
+  const [sandboxPlots, setSandboxPlots] = useState<string[]>([]);
+  const [isSandboxRunning, setIsSandboxRunning] = useState(false);
+  const [sandboxTime, setSandboxTime] = useState<number | null>(null);
 
   // SQL Workspace States
   const [sqlQuery, setSqlQuery] = useState(`SELECT date, region, category, revenue, units_sold \nFROM sales_performance_2026 \nWHERE revenue > 15000 \nLIMIT 100;`);
@@ -202,6 +292,56 @@ export default function DatasetsManager() {
       alert('AI SQL Copilot was unable to compile the query.');
     } finally {
       setIsCopilotLoading(false);
+    }
+  };
+
+  const handleRunSandbox = async () => {
+    if (!selectedDataset) return;
+    setIsSandboxRunning(true);
+    setSandboxError(null);
+    setSandboxOutput('');
+    setSandboxPlots([]);
+    setSandboxTime(null);
+    
+    const startTime = performance.now();
+    try {
+      const response = await apiClient.post('/analytics/sandbox/', {
+        code: sandboxCode,
+        dataset_id: selectedDataset.id
+      });
+      
+      const resData = response.data;
+      if (resData.success) {
+        setSandboxOutput(resData.stdout || '(No standard output printed)');
+        setSandboxPlots(resData.plots || []);
+        setSandboxTime(parseFloat((performance.now() - startTime).toFixed(0)));
+      } else {
+        setSandboxError(resData.stderr || 'Sandbox execution error.');
+      }
+    } catch (err: any) {
+      const errorResponse = err.response?.data;
+      let errMsg = 'Execution failed.';
+      if (errorResponse) {
+        if (errorResponse.stderr) {
+          errMsg = errorResponse.stderr;
+        } else if (errorResponse.error) {
+          if (typeof errorResponse.error === 'object' && errorResponse.error.message) {
+            errMsg = errorResponse.error.message;
+          } else {
+            errMsg = String(errorResponse.error);
+          }
+        } else if (errorResponse.detail) {
+          errMsg = errorResponse.detail;
+        }
+      } else {
+        errMsg = err.message || 'Execution failed.';
+      }
+      setSandboxError(errMsg);
+      if (errorResponse?.stdout) {
+        setSandboxOutput(errorResponse.stdout);
+      }
+    } finally {
+      setIsSandboxRunning(false);
     }
   };
 
@@ -393,6 +533,19 @@ export default function DatasetsManager() {
               <FileCode className="inline-block mr-1 h-3.5 w-3.5" />
               SQL Query Lab
             </button>
+            <button
+              onClick={() => {
+                setActiveTab('sandbox');
+              }}
+              className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${
+                activeTab === 'sandbox'
+                  ? 'bg-primary text-primary-foreground shadow'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Sparkles className="inline-block mr-1 h-3.5 w-3.5" />
+              Python Sandbox
+            </button>
           </div>
         </div>
       </div>
@@ -565,7 +718,170 @@ export default function DatasetsManager() {
         </div>
       ) : !selectedDataset ? (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center h-[300px] bg-card">
-          <p className="text-xs text-muted-foreground">Please upload a dataset first to access the SQL Query Lab.</p>
+          <p className="text-xs text-muted-foreground">Please upload a dataset first to access the analytical tools.</p>
+        </div>
+      ) : activeTab === 'sandbox' ? (
+        /* TAB 4: PYTHON SANDBOX WORKSPACE */
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          {/* Column Left: Schema Selector & Variables Info */}
+          <div className="lg:col-span-1 rounded-2xl border border-border bg-card p-4 flex flex-col gap-4 max-h-[600px] overflow-y-auto">
+            <div className="flex items-center gap-2 pb-3 border-b border-border">
+              <Sparkles className="h-4 w-4 text-amber-500 shrink-0" />
+              <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">Sandbox Context</h3>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <p className="text-[10px] font-bold text-muted-foreground uppercase mb-1.5">Target Dataset</p>
+                <div className="rounded-lg border border-border bg-muted/40 p-2 text-xs font-semibold text-foreground">
+                  {selectedDataset.name}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-[10px] font-bold text-muted-foreground uppercase mb-1.5">Available Variables</p>
+                <div className="space-y-2">
+                  <div className="p-2 rounded bg-zinc-950 font-mono text-[10px] text-zinc-300 border border-zinc-900">
+                    <p className="text-amber-500 font-bold">df</p>
+                    <p className="text-zinc-500 mt-0.5">Pandas DataFrame containing the preloaded dataset records.</p>
+                  </div>
+                  <div className="p-2 rounded bg-zinc-950 font-mono text-[10px] text-zinc-300 border border-zinc-900">
+                    <p className="text-amber-500 font-bold">DATASET_PATH</p>
+                    <p className="text-zinc-500 mt-0.5">Path string pointing to the Apache Parquet dataset file.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-[10px] font-bold text-muted-foreground uppercase mb-1.5">Columns Schema</p>
+                <div className="space-y-1 max-h-[220px] overflow-y-auto pr-1">
+                  {selectedDataset.columns.map((col) => (
+                    <div
+                      key={col.name}
+                      className="flex items-center justify-between rounded px-2 py-1 text-xs border border-transparent hover:bg-muted transition-colors"
+                    >
+                      <span className="font-mono text-foreground truncate">{col.name}</span>
+                      <span className="text-[9px] font-bold text-muted-foreground uppercase">{col.type}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Column Right: Python Monospace Code Editor + Sandbox Outputs */}
+          <div className="lg:col-span-3 flex flex-col gap-6">
+            {/* Editor Container */}
+            <div className="rounded-2xl border border-border bg-zinc-950 p-4 shadow-inner flex flex-col gap-3.5">
+              <div className="flex items-center justify-between border-b border-zinc-800 pb-2.5">
+                <div className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-amber-500 animate-pulse" />
+                  <span className="text-xs font-semibold text-zinc-400">Interactive Python Playground</span>
+                </div>
+                
+                {/* Script Template Selector */}
+                <div className="flex items-center gap-2">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase">Load Template:</label>
+                  <select
+                    onChange={(e) => {
+                      const idx = parseInt(e.target.value);
+                      if (!isNaN(idx)) {
+                        setSandboxCode(SANDBOX_TEMPLATES[idx].code);
+                      }
+                    }}
+                    defaultValue=""
+                    className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-[10px] text-zinc-300 outline-none focus:border-amber-500"
+                  >
+                    <option value="" disabled>-- Select a Preset script --</option>
+                    {SANDBOX_TEMPLATES.map((tmpl, idx) => (
+                      <option key={idx} value={idx}>{tmpl.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              
+              <textarea
+                value={sandboxCode}
+                onChange={(e) => setSandboxCode(e.target.value)}
+                rows={12}
+                className="w-full bg-transparent font-mono text-xs leading-relaxed text-zinc-100 outline-none resize-y"
+                placeholder="# Write your custom Python data science code here..."
+              />
+              
+              <div className="flex items-center justify-between border-t border-zinc-900 pt-3.5">
+                <div className="flex items-center gap-2">
+                  {isSandboxRunning && (
+                    <span className="text-xs text-amber-500 font-semibold animate-pulse">Running code sandbox...</span>
+                  )}
+                  {sandboxTime !== null && !sandboxError && (
+                    <div className="flex items-center gap-1.5 text-xs text-zinc-400">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                      <span>Code executed successfully in {sandboxTime}ms</span>
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={handleRunSandbox}
+                  disabled={isSandboxRunning}
+                  className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground shadow-lg shadow-primary/20 hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50"
+                >
+                  <Play className="h-3 w-3" />
+                  Run Script
+                </button>
+              </div>
+            </div>
+
+            {/* Sandbox Console Output logs + Plots Section */}
+            <div className="flex-grow flex flex-col gap-4 animate-fade-in-up">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Sandbox Run Output</h3>
+
+              {sandboxError && (
+                <div className="rounded-xl border border-red-900/50 bg-red-950/20 p-4 flex gap-3 text-red-400">
+                  <AlertCircle className="h-5 w-5 shrink-0" />
+                  <div className="text-xs">
+                    <p className="font-bold">Sandbox Error (Exit code non-zero)</p>
+                    <p className="mt-1 leading-normal text-red-300 font-mono whitespace-pre-wrap">{sandboxError}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Stdout Console Display */}
+              {sandboxOutput && (
+                <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4 flex flex-col gap-2">
+                  <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider border-b border-zinc-900 pb-1.5">Console Output</div>
+                  <pre className="font-mono text-xs text-zinc-200 whitespace-pre-wrap leading-relaxed max-h-[300px] overflow-y-auto">
+                    {sandboxOutput}
+                  </pre>
+                </div>
+              )}
+
+              {/* Generated Plots Render */}
+              {sandboxPlots.length > 0 && (
+                <div className="flex flex-col gap-3">
+                  <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Generated Plots & Charts</div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {sandboxPlots.map((plotUrl, idx) => (
+                      <div key={idx} className="rounded-xl border border-border bg-card p-3 shadow-sm hover:shadow transition-all flex flex-col items-center">
+                        <img
+                          src={plotUrl}
+                          alt={`Sandbox Output Chart ${idx + 1}`}
+                          className="max-w-full h-auto rounded border border-border"
+                        />
+                        <p className="text-[10px] text-muted-foreground mt-2 font-medium">Figure {idx + 1}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {!sandboxOutput && !sandboxError && !isSandboxRunning && (
+                <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center h-[200px] bg-card">
+                  <Play className="h-6 w-6 text-muted-foreground mb-3 animate-pulse" />
+                  <p className="text-xs text-muted-foreground">Click "Run Script" to execute python script and view logs and plots.</p>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       ) : (
         /* TAB 3: SQL WORKSPACE LAB */
