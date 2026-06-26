@@ -76,7 +76,7 @@ apiClient.interceptors.response.use(
 
     try {
       // Refresh token request
-      const refreshResponse = await axios.post(`${API_BASE_URL}/auth/refresh`, {}, {
+      const refreshResponse = await axios.post(`${API_BASE_URL}/auth/refresh/`, {}, {
         withCredentials: true, // Send httpOnly cookies
       });
 

@@ -229,17 +229,17 @@ export default function DashboardsList() {
 
       {/* Stats Quick Grid */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="rounded-xl border border-border bg-card p-4">
+        <div className="rounded-xl border border-border bg-card p-4 shadow-sm hover:shadow-md hover:border-primary/30 transition-all duration-300 hover:-translate-y-0.5">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Total Dashboards</p>
-          <p className="text-2xl font-bold mt-1 text-foreground">{dashboards.length}</p>
+          <p className="text-2xl font-bold mt-1 text-foreground bg-gradient-to-r from-amber-500 to-yellow-500 bg-clip-text text-transparent w-fit">{dashboards.length}</p>
         </div>
-        <div className="rounded-xl border border-border bg-card p-4">
+        <div className="rounded-xl border border-border bg-card p-4 shadow-sm hover:shadow-md hover:border-primary/30 transition-all duration-300 hover:-translate-y-0.5">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Shared Dashboards</p>
-          <p className="text-2xl font-bold mt-1 text-foreground">{dashboards.filter(d => d.isShared).length}</p>
+          <p className="text-2xl font-bold mt-1 text-foreground bg-gradient-to-r from-amber-500 to-yellow-500 bg-clip-text text-transparent w-fit">{dashboards.filter(d => d.isShared).length}</p>
         </div>
-        <div className="rounded-xl border border-border bg-card p-4">
+        <div className="rounded-xl border border-border bg-card p-4 shadow-sm hover:shadow-md hover:border-primary/30 transition-all duration-300 hover:-translate-y-0.5">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Total Widgets Active</p>
-          <p className="text-2xl font-bold mt-1 text-foreground">
+          <p className="text-2xl font-bold mt-1 text-foreground bg-gradient-to-r from-amber-500 to-yellow-500 bg-clip-text text-transparent w-fit">
             {dashboards.reduce((acc, curr) => acc + curr.widgets.length, 0)}
           </p>
         </div>
@@ -249,7 +249,7 @@ export default function DashboardsList() {
       {recentDashboards.length > 0 && (
         <div className="flex flex-col gap-3 animate-fade-in-up">
           <div className="flex items-center gap-2">
-            <Clock className="h-4.5 w-4.5 text-primary" />
+            <Clock className="h-4.5 w-4.5 text-primary animate-pulse" />
             <h2 className="text-sm font-bold text-foreground">Recently Viewed Workspaces</h2>
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -257,7 +257,7 @@ export default function DashboardsList() {
               <div
                 key={dash.id}
                 onClick={() => navigate(`/builder/${dash.id}`)}
-                className="group border border-border bg-card/60 p-4 rounded-xl shadow-xs hover:border-primary/40 hover:shadow-xs cursor-pointer transition-all duration-200"
+                className="group border border-border bg-card/60 p-4 rounded-xl shadow-sm hover:border-primary/45 hover:shadow-md cursor-pointer transition-all duration-300 hover:-translate-y-0.5"
               >
                 <h3 className="text-xs font-bold text-foreground truncate group-hover:text-primary transition-colors">
                   {dash.name}
@@ -265,7 +265,7 @@ export default function DashboardsList() {
                 <p className="text-[10px] text-muted-foreground mt-1 line-clamp-1">
                   {dash.description || 'No description'}
                 </p>
-                <div className="flex items-center justify-between text-[9px] text-muted-foreground mt-3 pt-2 border-t border-border/40">
+                <div className="flex items-center justify-between text-[9px] text-muted-foreground mt-3 pt-2 border-t border-border/40 font-semibold">
                   <span className="truncate">by {dash.ownerName}</span>
                   <span>{formatDate(dash.updatedAt)}</span>
                 </div>
@@ -288,7 +288,7 @@ export default function DashboardsList() {
               setShowAutocomplete(true);
             }}
             onFocus={() => setShowAutocomplete(true)}
-            className="w-full rounded-lg border border-border bg-card py-2 pr-4 pl-10 text-sm outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary"
+            className="w-full rounded-lg border border-border bg-card py-2 pr-4 pl-10 text-sm outline-none transition-all focus:border-primary/80 focus:ring-2 focus:ring-primary/20 text-foreground"
           />
 
           {/* CUST-5: Autocomplete Suggestion Dropdown */}

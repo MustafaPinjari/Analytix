@@ -21,6 +21,21 @@ from apps.authentication.serializers import (
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
 
+    def post(self, request, *args, **kwargs):
+        response = super().post(request, *args, **kwargs)
+        if response.status_code == 200:
+            refresh_token = response.data.get("refresh")
+            if refresh_token:
+                response.set_cookie(
+                    key="refresh_token",
+                    value=refresh_token,
+                    httponly=True,
+                    samesite="Lax",
+                    secure=False,
+                    max_age=7 * 24 * 60 * 60,  # 7 days
+                )
+        return response
+
 
 class RegisterView(APIView):
     permission_classes = [AllowAny]
@@ -292,4 +307,136 @@ class SSOCallbackView(APIView):
             "access": str(refresh.access_token),
             "refresh": str(refresh),
         }
-        return redirect(f"{frontend_callback}?{urllib.parse.urlencode(params)}")
+        response = redirect(f"{frontend_callback}?{urllib.parse.urlencode(params)}")
+        response.set_cookie(
+            key="refresh_token",
+            value=str(refresh),
+            httponly=True,
+            samesite="Lax",
+            secure=False,
+            max_age=7 * 24 * 60 * 60,  # 7 days
+        )
+        return response
+
+
+from rest_framework_simplejwt.serializers import TokenRefreshSerializer
+
+class CustomTokenRefreshView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        refresh_token = request.COOKIES.get("refresh_token")
+        if not refresh_token:
+            return Response(
+                {
+                    "success": False,
+                    "error": {
+                        "code": "MissingRefreshToken",
+                        "message": "Refresh token is missing from cookies.",
+                        "details": {}
+                    }
+                },
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        # Extract user_id from token BEFORE validating/blacklisting it
+        user_id = None
+        try:
+            refresh = RefreshToken(refresh_token)
+            user_id = refresh.payload.get("user_id")
+        except Exception:
+            pass
+
+        serializer = TokenRefreshSerializer(data={"refresh": refresh_token})
+        try:
+            serializer.is_valid(raise_exception=True)
+        except Exception:
+            return Response(
+                {
+                    "success": False,
+                    "error": {
+                        "code": "InvalidRefreshToken",
+                        "message": "Refresh token is invalid or expired.",
+                        "details": {}
+                    }
+                },
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        new_access_token = serializer.validated_data["access"]
+        new_refresh_token = serializer.validated_data.get("refresh")
+
+        if not user_id:
+            return Response(
+                {
+                    "success": False,
+                    "error": {
+                        "code": "InvalidTokenPayload",
+                        "message": "User ID not found in token payload.",
+                        "details": {}
+                    }
+                },
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        try:
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            user = User.objects.get(id=user_id)
+        except Exception:
+            return Response(
+                {
+                    "success": False,
+                    "error": {
+                        "code": "UserNotFound",
+                        "message": "User associated with this token does not exist.",
+                        "details": {}
+                    }
+                },
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        # Map user info to the format expected by the frontend
+        is_superuser = user.is_superuser
+        orgs = list(user.org_roles.select_related("organization"))
+        backend_role = orgs[0].role if orgs else "VIEWER"
+
+        if is_superuser or backend_role in ["SUPER_ADMIN", "ORG_ADMIN"]:
+            frontend_role = "admin"
+        elif backend_role == "ANALYST":
+            frontend_role = "editor"
+        else:
+            frontend_role = "viewer"
+
+        user_data = {
+            "id": str(user.id),
+            "name": f"{user.first_name} {user.last_name}".strip() or user.email,
+            "email": user.email,
+            "role": frontend_role,
+            "organizationId": str(orgs[0].organization.id) if orgs else "",
+            "is_superuser": is_superuser
+        }
+
+        response = Response(
+            {
+                "success": True,
+                "data": {
+                    "accessToken": new_access_token,
+                    "user": user_data
+                }
+            },
+            status=status.HTTP_200_OK
+        )
+
+        # If refresh token was rotated, set the new refresh token in cookie
+        if new_refresh_token:
+            response.set_cookie(
+                key="refresh_token",
+                value=new_refresh_token,
+                httponly=True,
+                samesite="Lax",
+                secure=False,
+                max_age=7 * 24 * 60 * 60,  # 7 days
+            )
+
+        return response

@@ -76,14 +76,19 @@ export default function Sidebar() {
               key={item.path}
               to={item.path}
               className={cn(
-                'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 group relative',
+                'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-300 group relative',
                 active
-                  ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/20'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/25 translate-x-[3px]'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground hover:translate-x-[3px]'
               )}
             >
-              <Icon className="h-4.5 w-4.5 shrink-0" />
+              <Icon className="h-4.5 w-4.5 shrink-0 transition-transform duration-300 group-hover:scale-110" />
               {!sidebarCollapsed && <span className="truncate">{item.name}</span>}
+              
+              {/* Active glowing indicator badge */}
+              {active && (
+                <span className="absolute right-2.5 top-[42%] h-1.5 w-1.5 rounded-full bg-white glow-active shrink-0 animate-ping" />
+              )}
               
               {/* Collapsed Tooltip */}
               {sidebarCollapsed && (

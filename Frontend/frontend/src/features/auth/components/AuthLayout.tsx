@@ -1,4 +1,5 @@
 import { Outlet } from 'react-router-dom';
+import { TrendingUp, CheckCircle2, Database, Sparkles, Lock } from 'lucide-react';
 
 export default function AuthLayout() {
   return (
