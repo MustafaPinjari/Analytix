@@ -58,8 +58,8 @@ export default function DashboardsList() {
             h: w.height,
           }
         })),
-        isShared: false,
-        sharedWith: [],
+        isShared: d.is_shared,
+        sharedWith: d.shared_with || [],
         ownerId: d.owner_id || '',
         ownerName: d.owner_name || 'Unknown',
         createdAt: d.created_at,

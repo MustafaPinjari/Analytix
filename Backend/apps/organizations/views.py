@@ -74,6 +74,12 @@ class InviteUserView(APIView):
             actor_role=request.user_org_role
         )
 
+        try:
+            from apps.audit_logs.utils import log_activity
+            log_activity(request, "USER_INVITE", payload={"email": result['user'].email, "role": result['role']})
+        except Exception:
+            pass
+
         return Response(
             {
                 "success": True,
@@ -86,3 +92,53 @@ class InviteUserView(APIView):
             },
             status=status.HTTP_201_CREATED
         )
+
+
+from core.exceptions import NotFoundException, ValidationException
+from apps.users.models import UserOrganizationRole
+
+class OrganizationUserDetailView(APIView):
+    permission_classes = [IsAuthenticated, HasTenantContext, IsOrgAdmin]
+
+    def put(self, request, org_id, user_id):
+        if str(request.tenant.id) != str(org_id):
+            raise ValidationException("X-Organization-Id header does not match path parameters.")
+        
+        role = request.data.get("role")
+        if role not in ["SUPER_ADMIN", "ORG_ADMIN", "ANALYST", "VIEWER"]:
+            raise ValidationException("Invalid role specified.")
+            
+        try:
+            membership = UserOrganizationRole.objects.get(organization=request.tenant, user_id=user_id)
+        except UserOrganizationRole.DoesNotExist:
+            raise NotFoundException("User is not a member of this organization.")
+            
+        membership.role = role
+        membership.save()
+        try:
+            from apps.audit_logs.utils import log_activity
+            log_activity(request, "USER_ROLE_UPDATE", payload={"user_id": str(user_id), "role": role, "email": membership.user.email})
+        except Exception:
+            pass
+        return Response({"success": True, "message": "User role updated successfully."}, status=status.HTTP_200_OK)
+
+    def delete(self, request, org_id, user_id):
+        if str(request.tenant.id) != str(org_id):
+            raise ValidationException("X-Organization-Id header does not match path parameters.")
+            
+        try:
+            membership = UserOrganizationRole.objects.get(organization=request.tenant, user_id=user_id)
+        except UserOrganizationRole.DoesNotExist:
+            raise NotFoundException("User is not a member of this organization.")
+            
+        if membership.user == request.user:
+            raise ValidationException("You cannot remove yourself from the organization.")
+            
+        user_email = membership.user.email
+        membership.delete()
+        try:
+            from apps.audit_logs.utils import log_activity
+            log_activity(request, "USER_REMOVE", payload={"user_id": str(user_id), "email": user_email})
+        except Exception:
+            pass
+        return Response({"success": True, "message": "User removed from organization successfully."}, status=status.HTTP_200_OK)

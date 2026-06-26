@@ -50,6 +50,12 @@ class DatasetListCreateView(APIView):
             dataset.sql_query = sql_q
             dataset.save()
 
+        try:
+            from apps.audit_logs.utils import log_activity
+            log_activity(request, "DATASET_CREATE", payload={"dataset_id": str(dataset.id), "name": dataset.name})
+        except Exception:
+            pass
+
         return Response(
             {
                 "success": True,
@@ -106,6 +112,12 @@ class DatasetUploadView(APIView):
             file_type=ext,
             user_id=request.user.id
         )
+
+        try:
+            from apps.audit_logs.utils import log_activity
+            log_activity(request, "DATASET_UPLOAD", payload={"dataset_id": str(dataset.id), "name": dataset.name, "row_count": result["row_count"]})
+        except Exception:
+            pass
 
         return Response(
             {

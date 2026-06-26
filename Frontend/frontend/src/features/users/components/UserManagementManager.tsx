@@ -73,17 +73,41 @@ export default function UserManagementManager() {
     }
   }, [user]);
 
-  const handleRoleChange = (id: string, newRole: OrgUser['role']) => {
-    // Note: backend doesn't support direct update, keep local update
-    setUsers((prev) =>
-      prev.map((u) => (u.id === id ? { ...u, role: newRole } : u))
-    );
+  const handleRoleChange = async (id: string, newRole: OrgUser['role']) => {
+    try {
+      const backendRole = 
+        newRole === 'owner' ? 'SUPER_ADMIN' :
+        newRole === 'admin' ? 'ORG_ADMIN' :
+        newRole === 'editor' ? 'ANALYST' : 'VIEWER';
+
+      await apiClient.put(`/organizations/${user?.organizationId}/users/${id}/`, {
+        role: backendRole
+      });
+
+      setUsers((prev) =>
+        prev.map((u) => (u.id === id ? { ...u, role: newRole } : u))
+      );
+      setSuccessMsg(`User role updated successfully.`);
+      setTimeout(() => setSuccessMsg(null), 3000);
+    } catch (err: any) {
+      console.error('Error changing user role:', err);
+      const msg = err.response?.data?.error?.message || err.response?.data?.detail || 'Failed to update user role.';
+      alert(msg);
+    }
   };
 
-  const handleDeleteUser = (id: string, name: string) => {
-    // Note: backend doesn't support delete, keep local update
+  const handleDeleteUser = async (id: string, name: string) => {
     if (confirm(`Are you sure you want to remove user "${name}"?`)) {
-      setUsers((prev) => prev.filter((u) => u.id !== id));
+      try {
+        await apiClient.delete(`/organizations/${user?.organizationId}/users/${id}/`);
+        setUsers((prev) => prev.filter((u) => u.id !== id));
+        setSuccessMsg(`User successfully removed from workspace.`);
+        setTimeout(() => setSuccessMsg(null), 3000);
+      } catch (err: any) {
+        console.error('Error deleting user membership:', err);
+        const msg = err.response?.data?.error?.message || err.response?.data?.detail || 'Failed to remove user from workspace.';
+        alert(msg);
+      }
     }
   };
 

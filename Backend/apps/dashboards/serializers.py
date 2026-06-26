@@ -9,7 +9,7 @@ class DashboardSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Dashboard
-        fields = ("id", "name", "description", "widgets", "owner_id", "owner_name", "created_at", "updated_at")
+        fields = ("id", "name", "description", "widgets", "owner_id", "owner_name", "is_shared", "shared_with", "created_at", "updated_at")
         read_only_fields = ("id", "owner_id", "owner_name", "created_at", "updated_at")
 
     def get_owner_name(self, obj):

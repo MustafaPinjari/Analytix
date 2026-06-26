@@ -620,8 +620,8 @@ print(df.head())`;
           name: d.name,
           description: d.description,
           widgets: savedWidgets,
-          isShared: false,
-          sharedWith: [],
+          isShared: d.is_shared,
+          sharedWith: d.shared_with || [],
           ownerId: d.owner_id || '',
           ownerName: d.owner_name || 'Unknown',
           createdAt: d.created_at,
@@ -896,6 +896,8 @@ print(df.head())`;
       await apiClient.put(`/dashboards/${dashboard.id}/`, {
         name: dashboard.name,
         description: dashboard.description,
+        is_shared: dashboard.isShared,
+        shared_with: dashboard.sharedWith,
       });
 
       const updatedWidgetsPromises = dashboard.widgets.map(async (w) => {

@@ -34,6 +34,18 @@ class CustomTokenObtainPairView(TokenObtainPairView):
                     secure=False,
                     max_age=7 * 24 * 60 * 60,  # 7 days
                 )
+            try:
+                from django.contrib.auth import get_user_model
+                from apps.audit_logs.utils import log_activity
+                User = get_user_model()
+                user = User.objects.get(email=request.data.get("email"))
+                request.user = user
+                org_roles = user.org_roles.all()
+                if org_roles.exists():
+                    request.tenant = org_roles.first().organization
+                log_activity(request, "USER_LOGIN", payload={"email": user.email})
+            except Exception:
+                pass
         return response
 
 
@@ -54,6 +66,14 @@ class RegisterView(APIView):
             last_name=serializer.validated_data["last_name"],
             org_name=serializer.validated_data["org_name"]
         )
+
+        try:
+            from apps.audit_logs.utils import log_activity
+            request.user = result["user"]
+            request.tenant = result["organization"]
+            log_activity(request, "USER_REGISTER", payload={"email": result["user"].email, "org_name": serializer.validated_data["org_name"]})
+        except Exception:
+            pass
 
         return Response(
             {
@@ -84,6 +104,17 @@ class VerifyEmailView(APIView):
         use_case = VerifyEmailUseCase(user_repo)
         
         result = use_case.execute(token=token)
+        try:
+            from apps.audit_logs.utils import log_activity
+            user = result.get("user")
+            if user:
+                request.user = user
+                org_roles = user.org_roles.all()
+                if org_roles.exists():
+                    request.tenant = org_roles.first().organization
+            log_activity(request, "USER_VERIFY_EMAIL")
+        except Exception:
+            pass
         return Response({"success": True, "message": result["message"]}, status=status.HTTP_200_OK)
 
 
@@ -299,6 +330,16 @@ class SSOCallbackView(APIView):
                 )
         except Exception as e:
             return redirect(f"http://localhost:5173/login?error=user_creation_failed&detail={urllib.parse.quote(str(e))}")
+
+        try:
+            from apps.audit_logs.utils import log_activity
+            request.user = user
+            org_roles = user.org_roles.all()
+            if org_roles.exists():
+                request.tenant = org_roles.first().organization
+            log_activity(request, "USER_SSO_LOGIN", payload={"email": email, "provider": state})
+        except Exception:
+            pass
 
         refresh = RefreshToken.for_user(user)
         
